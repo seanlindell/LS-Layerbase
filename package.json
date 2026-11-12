@@ -1,6 +1,6 @@
 {
 	"name": "ls-layerbase",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "A Nuxt layer with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project.",
 	"private": true,
 	"type": "module",
@@ -14,7 +14,9 @@
 		"nuxt.config.ts",
 		"app",
 		"server",
-		"shared"
+		"shared",
+		"docs",
+		"CHANGELOG.md"
 	],
 	"packageManager": "pnpm@12.16.1",
 	"engines": {
@@ -25,9 +27,8 @@
 		"build": "nuxt build playground",
 		"preview": "nuxt preview playground",
 		"prepare:playground": "nuxt prepare playground",
-		"postinstall": "nuxt prepare playground",
-		"lint": "eslint . --max-warnings 0",
-		"lint:fix": "eslint . --fix",
+		"lint": "nuxt prepare playground && eslint . --max-warnings 0",
+		"lint:fix": "nuxt prepare playground && eslint . --fix",
 		"format": "prettier . --write",
 		"format:check": "prettier . --check",
 		"typecheck": "nuxt typecheck playground && tsc -p test/tsconfig.json",
