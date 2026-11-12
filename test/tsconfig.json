@@ -1,0 +1,19 @@
+{
+	// Type-checks the tests and the Vitest config. The layer and the playground are
+	// checked by `nuxt typecheck playground`, which does not include this folder.
+	"compilerOptions": {
+		"strict": true,
+		"noEmit": true,
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"types": ["node"],
+		"paths": {
+			"#shared/*": ["../shared/*"],
+			"~~/*": ["../*"]
+		}
+	},
+	"include": ["./**/*.ts", "../vitest.config.ts"]
+}
