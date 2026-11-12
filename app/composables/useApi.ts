@@ -1,5 +1,6 @@
+import type { FetchOptions } from "ofetch";
 import { createApiRunner } from "../utils/apiClient";
-import type { ApiNotification } from "../utils/apiClient";
+import type { ApiFetcher, ApiNotification } from "../utils/apiClient";
 
 declare module "#app" {
 	interface RuntimeNuxtHooks {
@@ -11,7 +12,8 @@ declare module "#app" {
 	}
 }
 
-type FetchOptions = NonNullable<Parameters<typeof $fetch>[1]>;
+/** The options of `$fetch`, without the types that Nitro derives from the app's routes. */
+type ApiFetchOptions = FetchOptions<"json">;
 
 /**
  * Client-side calls to routes that follow the API error contract.
@@ -26,10 +28,12 @@ type FetchOptions = NonNullable<Parameters<typeof $fetch>[1]>;
 export function useApi() {
 	const nuxtApp = useNuxtApp();
 
-	return createApiRunner<FetchOptions>(
-		(request, options) => $fetch(request, options),
-		(notification) => {
-			void nuxtApp.callHook("layerbase:notify", notification);
-		},
-	);
+	// Nitro types `$fetch` by the routes of the app, which `run` does not use: the
+	// caller names the result type. In an app with more than a few routes, that
+	// typing also fails here with "excessive stack depth".
+	const fetcher = $fetch as unknown as ApiFetcher<ApiFetchOptions>;
+
+	return createApiRunner<ApiFetchOptions>(fetcher, (notification) => {
+		void nuxtApp.callHook("layerbase:notify", notification);
+	});
 }
