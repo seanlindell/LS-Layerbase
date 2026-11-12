@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Note } from "../../server/utils/notes";
+import type { Note } from "../../server/repositories/NoteRepository";
 
 // Try these titles: a new one (200), an empty one (400), "First note" (409, with
 // the existing note as the payload), "upstream" (502) and "bug" (500).

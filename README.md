@@ -4,7 +4,7 @@
 
 A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project: one API error contract, API-key authentication, database migrations on boot, a health check, a dependency-injection container and a typed fetch helper.
 
-**Status: in development.** The layer setup, the API error contract, the `useApi` fetch helper, migrations on boot and the health check are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
+**Status: in development.** The layer setup, the API error contract, the `useApi` fetch helper, migrations on boot, the health check and the DI container are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
 
 ## Planned contents
 
@@ -262,6 +262,81 @@ The route answers 503 while migrations run. Docker does not count a failure duri
 
 `playground/Dockerfile` uses this line. `./scripts/image-health.sh` builds that image and checks that `docker inspect` reports `healthy`, then `unhealthy` while the database is stopped, then `healthy` again. CI runs it.
 
+## DI container
+
+For apps with services and repositories, the layer builds one [awilix](https://github.com/jeffijoe/awilix) container when the server starts, and gives routes a typed way to resolve from it.
+
+### Register
+
+Keep the registrations in a file of their own, so that the plugin and the tests use the same ones:
+
+```ts
+// server/container.ts
+export interface AppCradle {
+	db: Database;
+	noteRepository: INoteRepository;
+	noteService: NoteService;
+}
+
+export const registerServices: ContainerSetup<AppCradle> = ({ container, service, factory, value }) => {
+	container.register({
+		db: value(db),
+		noteRepository: service(NoteRepository),
+		noteService: service(NoteService),
+	});
+};
+```
+
+```ts
+// server/plugins/01.container.ts (after the migration plugin)
+export default defineContainerPlugin(registerServices);
+```
+
+A class gets the other registrations as one object: `constructor({ noteRepository }: { noteRepository: INoteRepository })`.
+
+| Helper                                  | Registers                        |
+| --------------------------------------- | -------------------------------- |
+| `service(Class, lifetime?)`             | A class.                         |
+| `factory((cradle) => value, lifetime?)` | A function that makes the value. |
+| `value(x)`                              | A value that exists already.     |
+
+### Lifetimes
+
+| Lifetime      | One instance per  | Notes                                        |
+| ------------- | ----------------- | -------------------------------------------- |
+| `"singleton"` | Server            | The default for `service` and `factory`.     |
+| `"scoped"`    | Request           | Needs `scopePerRequest: true` on the plugin. |
+| `"transient"` | Call of `resolve` |                                              |
+
+The container is strict: a singleton that depends on a scoped or transient registration is an error when it is resolved, and so is a name that is not registered.
+
+With `defineContainerPlugin(registerServices, { scopePerRequest: true, onRequestScope })`, each request gets a scope of the container, and `onRequestScope(scope, event)` can register values that belong to the request, such as the signed-in user. The scope is disposed after the response.
+
+### Resolve
+
+```ts
+// server/utils/resolve.ts
+export const resolve = defineResolver<AppCradle>();
+```
+
+```ts
+// server/api/notes/[id].get.ts
+export default defineApiHandler((event) => {
+	return resolve(event, "noteService").find(getRouterParam(event, "id")); // typed as NoteService
+});
+```
+
+`resolve(event, name)` uses the container of the request. `resolve(name)` uses the root container, for server plugins and tasks. `useContainer<AppCradle>(event?)` gives the container itself. Services throw the typed errors of the error contract, and the handler wrappers turn them into responses.
+
+### Test with fakes
+
+```ts
+const container = createTestContainer(registerServices, { noteRepository: fakeRepository });
+const service = container.resolve("noteService"); // built with the fake
+```
+
+`createTestContainer` runs the same registrations and then replaces the named ones with the given values. A registration that the test does not resolve is never built, so a test of one service needs no database.
+
 ## Development
 
 You need Node 22 or later and pnpm (the version is pinned in `package.json`).
@@ -301,7 +376,7 @@ TEST_POSTGRES_URL=postgres://postgres:postgres@localhost:55432/postgres pnpm tes
 
 The layer never brings a second copy of a package into an app:
 
-- `nuxt`, `vue` and `drizzle-orm` are **peer dependencies** with an explicit range. `drizzle-orm` is required even by an app that does not use the migration helpers, because Nuxt type-checks all files of a layer.
+- `nuxt`, `vue`, `drizzle-orm` and `awilix` are **peer dependencies** with an explicit range. `drizzle-orm` and `awilix` are required even by an app that does not use the migration helpers or the container, because Nuxt type-checks all files of a layer.
 - The database drivers (`better-sqlite3`, `pg`) are not dependencies of the layer at all. The app creates the connection and passes it in.
 - The versions the layer is developed and tested with are in `devDependencies`.
 
