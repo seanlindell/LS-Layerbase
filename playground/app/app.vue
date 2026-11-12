@@ -1,15 +1,20 @@
 <script setup lang="ts">
-const { data: ping } = await useFetch("/api/ping");
+const notifications = usePlaygroundNotifications();
 </script>
 
 <template>
 	<main>
-		<h1>Layerbase playground</h1>
-		<p>
-			Layer applied: <code data-testid="layer-name">{{ LAYERBASE_NAME }}</code>
-		</p>
-		<p>
-			Server answer: <code data-testid="ping">{{ ping }}</code>
-		</p>
+		<nav>
+			<NuxtLink to="/">Home</NuxtLink>
+			·
+			<NuxtLink to="/notes">Notes</NuxtLink>
+		</nav>
+		<NuxtPage />
+		<!-- The playground's own "toasts". An app would use its UI library here. -->
+		<ul aria-live="polite" data-testid="notifications">
+			<li v-for="(item, index) in notifications" :key="index">
+				<strong>{{ item.kind }}: {{ item.title }}</strong> {{ item.message }}
+			</li>
+		</ul>
 	</main>
 </template>

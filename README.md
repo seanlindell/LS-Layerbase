@@ -4,7 +4,7 @@
 
 A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project: one API error contract, API-key authentication, database migrations on boot, a health check, a dependency-injection container and a typed fetch helper.
 
-**Status: in development.** The layer setup and the API error contract are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
+**Status: in development.** The layer setup, the API error contract and the `useApi` fetch helper are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
 
 ## Planned contents
 
@@ -114,6 +114,59 @@ On a failure, `ResponseObject` is the payload of the error, or `null`. A handler
 | Anything else                             | The original error, with its stack. The caller gets `The server could not complete the request. Try again later.` |
 
 Each log line starts with `[layerbase] <METHOD> <path> failed with <status>:` and goes to `console.error`. The path has no query string, because a query can hold secrets.
+
+## Fetch helper: `useApi`
+
+`useApi()` is the client side of the error contract. Its `run` sends a request to a route that answers with an `ActionResult`, and it does not throw: a failure comes back in the same shape as a success, so a page branches on `Success` only.
+
+```ts
+const { run, notifySuccess } = useApi();
+const isSaving = ref(false);
+
+const result = await run<Note>("/api/notes", {
+	method: "POST",
+	body: { title: title.value },
+	pending: isSaving, // true while the request runs
+	errorTitle: "Could not create the note",
+});
+
+if (result.Success) {
+	notifySuccess(result.Message);
+	notes.value.push(result.ResponseObject); // typed as Note
+} else if (result.Status === 409) {
+	existing.value = result.ResponseObject; // the payload of the refusal, typed as unknown
+}
+```
+
+On failure `run` resolves to `{ Success: false, Message, ResponseObject, Status }`:
+
+| The server sent                                                 | `Message`                                                              | `ResponseObject`                              | `Status`        |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------- | --------------- |
+| An `ActionResult` body (a refused write)                        | its `Message`                                                          | its `ResponseObject` (the payload, or `null`) | the HTTP status |
+| An h3 error body (a read error, or a refusal from a middleware) | its `message`                                                          | its `data`, or `null`                         | the HTTP status |
+| An error without a usable body                                  | `The request failed with status 502.`                                  | `null`                                        | the HTTP status |
+| Nothing (the network is down)                                   | `The server could not be reached. Check the connection and try again.` | `null`                                        | `null`          |
+
+The other options of `run` are the options of `$fetch`. `useApi()` also returns:
+
+- `errorMessage(error)` and `errorStatus(error)`: the message and the status for anything that a request threw, for code that calls `$fetch` or `useFetch` directly.
+- `notifyError(error, title?)` and `notifySuccess(title, message?)`.
+
+### Showing notifications
+
+The layer has no UI library. It calls the Nuxt hook `layerbase:notify` with `{ kind: "error" | "success", title, message? }`, and the app shows it. With Nuxt UI:
+
+```ts
+// app/plugins/notify.ts
+export default defineNuxtPlugin((nuxtApp) => {
+	const toast = useToast();
+	nuxtApp.hook("layerbase:notify", ({ kind, title, message }) => {
+		toast.add({ title, description: message, color: kind === "error" ? "error" : "success" });
+	});
+});
+```
+
+`run` sends an error notification on each failure. Pass `silent: true` when the page shows the failure itself. With no listener, nothing is shown.
 
 ## Development
 
