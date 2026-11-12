@@ -1,6 +1,6 @@
 # API keys and the auth middleware: design
 
-Status: **proposed**, for review. Issue: #4.
+Status: **proposed**, for review. Issue: #4. The code in the same pull request follows this document.
 
 This document says what the layer will build for API-key authentication, and why. The code follows it. Section 11 lists the questions where a different answer would change the code.
 
@@ -125,6 +125,8 @@ export default defineAuthMiddleware({
 ### Which requests it guards
 
 Paths that start with one of `protect` (default `["/api/"]`), after the app's base path is removed. Other paths pass untouched.
+
+Before the comparison the path is made the same as the router sees it: `%xx` is decoded, repeated slashes become one, and a slash at the end is removed. The prefix comparison ignores case. Otherwise `/api//notes` or `/API/notes` could count as outside the guarded paths. A path that cannot be decoded is refused with 400.
 
 ### Rules
 
