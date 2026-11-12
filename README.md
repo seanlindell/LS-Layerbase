@@ -4,7 +4,7 @@
 
 A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project: one API error contract, API-key authentication, database migrations on boot, a health check, a dependency-injection container and a typed fetch helper.
 
-**Status: in development.** The layer setup, the API error contract, the `useApi` fetch helper and migrations on boot are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
+**Status: in development.** The layer setup, the API error contract, the `useApi` fetch helper, migrations on boot and the health check are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
 
 ## Planned contents
 
@@ -216,6 +216,51 @@ SQLite migrations run synchronously, so the server accepts no request before the
 | `layerbase.migrateOnBoot`    | `NUXT_LAYERBASE_MIGRATE_ON_BOOT`   | `true`      | Set to `false` for an app that runs its migrations elsewhere, for example as a deploy step. Nothing is applied, and `isMigrated()` is true from the start. |
 
 Both can also be passed to `defineMigrationPlugin` as `folder` and `enabled`. `migrate` can be any function that applies the migrations and throws when one fails, so another driver or migration tool also works.
+
+## Health check
+
+A route for container platforms and Docker's `HEALTHCHECK`. It says whether the app can serve: the migrations are done and the database answers.
+
+```ts
+// server/api/health.get.ts
+import { sql } from "drizzle-orm";
+
+export default defineHealthHandler(() => ({
+	ping: () => db.run(sql`select 1`), // PostgreSQL: () => pool.query("select 1")
+}));
+```
+
+| State                                                     | Status | Body              |
+| --------------------------------------------------------- | ------ | ----------------- |
+| Migrations done, and each check passed within the timeout | 200    | `{ "ok": true }`  |
+| Anything else                                             | 503    | `{ "ok": false }` |
+
+- **The bodies are fixed.** They have no version, host name or error text, because the route is public. The reason for a failure goes to the server log, once when the result changes and not on each probe.
+- **Never cached:** each answer has `Cache-Control: no-store`.
+- **One query at a time.** Probes that arrive while a check is still running wait for that run and start no second one. A stalled database thus holds one connection, however many probes arrive, and each probe still gets its 503 after the timeout.
+- **Public.** Keep the route out of authentication and rate limits.
+
+### Options
+
+| Option              | Default | Meaning                                                                                                                                                     |
+| ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ping`              | none    | A trivial query against the database. It fails when it throws or rejects.                                                                                   |
+| `checks`            | `{}`    | More checks by name, for example `{ queue: () => queue.ping() }`. A check fails when it throws, rejects or gives `false`. The name is used in the log only. |
+| `timeoutMs`         | `2000`  | How long one check may take.                                                                                                                                |
+| `requireMigrations` | `true`  | Answer 503 until `isMigrated()` is true. Set it to `false` in an app that does not use the migration plugin.                                                |
+
+### Docker `HEALTHCHECK`
+
+For a Node Alpine image. It uses Node's own `fetch`, so the image needs no `curl`, and it reads the port from `$PORT`:
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+	CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+```
+
+The route answers 503 while migrations run. Docker does not count a failure during the start period, so make `--start-period` longer than your slowest migration.
+
+`playground/Dockerfile` uses this line. `./scripts/image-health.sh` builds that image and checks that `docker inspect` reports `healthy`, then `unhealthy` while the database is stopped, then `healthy` again. CI runs it.
 
 ## Development
 

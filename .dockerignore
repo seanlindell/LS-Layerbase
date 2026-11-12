@@ -1,0 +1,10 @@
+.git
+.github
+.ai
+.claude
+node_modules
+**/node_modules
+**/.nuxt
+**/.output
+**/.data
+*.sqlite*
