@@ -4,7 +4,7 @@
 
 A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project: one API error contract, API-key authentication, database migrations on boot, a health check, a dependency-injection container and a typed fetch helper.
 
-**Status: in development.** The layer setup, the API error contract, the `useApi` fetch helper, migrations on boot, the health check and the DI container are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
+**Status: in development.** The layer setup, the API error contract, the `useApi` fetch helper, migrations on boot, the health check, the DI container and API keys are built. Nothing is published yet. The [issues](../../issues) describe the first version.
 
 ## Planned contents
 
@@ -336,6 +336,93 @@ const service = container.resolve("noteService"); // built with the fake
 ```
 
 `createTestContainer` runs the same registrations and then replaces the named ones with the given values. A registration that the test does not resolve is never built, so a test of one service needs no database.
+
+## API keys and the auth middleware
+
+API keys for agents and scripts, next to a cookie session for people. The full design, with the reasons, is in [docs/api-keys-design.md](docs/api-keys-design.md).
+
+A key looks like `lsk_4f2a91cc03b7d5e1_<43 characters>`: a prefix that the app sets, an id that is not secret, and a 256-bit secret. Only a SHA-256 hash of the secret is stored, so the full key is shown once, when it is made.
+
+### 1. Table
+
+Add the table to the app's Drizzle schema, and let `drizzle-kit generate` write the migration:
+
+```ts
+export const apiKeys = sqliteApiKeysTable(); // or postgresApiKeysTable()
+```
+
+### 2. Service
+
+Register the repository and the service in the container. The app gives the list of scopes that exist:
+
+```ts
+container.register({
+	apiKeyRepository: value(new SqliteApiKeyRepository(db, apiKeys)), // or PostgresApiKeyRepository
+	apiKeyService: factory(
+		({ apiKeyRepository }) =>
+			new ApiKeyService({
+				repository: apiKeyRepository,
+				scopes: ["notes:read", "notes:write"],
+				prefix: "app",
+			}),
+	),
+});
+```
+
+| Method                                | Does                                                                                                                   |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `issue({ name, scopes, expiresAt? })` | Makes a key. The result has the metadata and `PlainTextKey`, the only copy of the full key. An unknown scope is a 400. |
+| `list()`                              | The metadata of all keys, without hashes.                                                                              |
+| `revoke(id)`                          | Revokes a key. It stays in the list.                                                                                   |
+| `authenticate(key)`                   | Used by the middleware.                                                                                                |
+
+The layer has no routes to manage keys, because apps differ in who may do that. Write three short handlers that call the service; the playground has them in `playground/server/api/keys/`.
+
+`apiKeyRepository` can be any object with the `ApiKeyRepository` interface. `MemoryApiKeyRepository` is there for tests.
+
+### 3. Middleware
+
+```ts
+// server/middleware/01.auth.ts
+export default defineAuthMiddleware({
+	apiKeys: (event) => resolve(event, "apiKeyService"),
+	session: async (event) => (await getUserSession(event)).user ?? null, // nuxt-auth-utils
+	rules: [
+		{ path: "/api/auth/login", public: true },
+		{ method: "GET", path: /^\/api\/notes(\/\d+)?$/, scope: "notes:read" },
+		{ method: "POST", path: "/api/notes", scope: "notes:write" },
+	],
+});
+```
+
+It guards the paths under `/api/` (set `protect` for others). The first rule that matches the method and path decides:
+
+| Rule                        | Anonymous | Session | API key                          |
+| --------------------------- | --------- | ------- | -------------------------------- |
+| `public: true`              | allowed   | allowed | allowed                          |
+| `scope: "x"`                | 401       | allowed | allowed with scope `x`, else 403 |
+| `session: true`, or no rule | 401       | allowed | 403                              |
+
+So a new route is closed to anonymous callers, and closed to keys, until a rule names it. `GET /api/health` is public unless a rule of the app says otherwise.
+
+- A key is read from `Authorization: Bearer <key>` only. When a key is sent, it is the credential, also if a session cookie comes with it.
+- **CSRF:** a request without a key that changes state (not `GET`, `HEAD` or `OPTIONS`) must have an `Origin` header that names the app's host, or one of `allowedOrigins`. A request with a key needs no `Origin`.
+- The request's identity is `event.context.auth`: `{ kind: "key", keyId, name, scopes }` or `{ kind: "session", user }`. In a handler, `requireAuth(event)`, `requireSession(event)` and `requireScope(event, scope)` give it or throw.
+
+| Case                                                                          | Status | Message                                                 |
+| ----------------------------------------------------------------------------- | ------ | ------------------------------------------------------- |
+| No credential, or a key that is malformed, unknown, wrong, expired or revoked | 401    | `Send a valid API key, or sign in.`                     |
+| The key does not have the scope                                               | 403    | ``This API key does not have the scope `notes:write`.`` |
+| The route is not open to keys                                                 | 403    | `This endpoint is not available to API keys.`           |
+| A cookie write without a matching `Origin`                                    | 403    | `Cross-site request refused.`                           |
+| The rate-limit hook refused                                                   | 429    | `Too many requests. Try again in N seconds.`            |
+
+Each bad key gets the same 401, so a caller cannot find out which keys exist. The bodies are h3 errors, which `useApi` reads.
+
+### Hooks
+
+- `onAudit(entry)` on the service: called when a key is used, refused, created or revoked, with the key's id, the method and the path. An entry never holds a key or a secret.
+- `rateLimit(key, event)` on the middleware: return `{ allowed: false, retryAfterSeconds }` to answer 429. The layer has no limiter of its own.
 
 ## Development
 

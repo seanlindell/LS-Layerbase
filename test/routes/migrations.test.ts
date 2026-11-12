@@ -1,14 +1,17 @@
 import { $fetch } from "@nuxt/test-utils/e2e";
 import { describe, expect, it } from "vitest";
 import { SQLITE_MIGRATIONS, brokenCopyOf } from "../fixtures/migrations";
-import { setupPlayground, startSecondServer, waitForServer } from "./setupPlayground";
+import { sessionHeaders, setupPlayground, startSecondServer, waitForServer } from "./setupPlayground";
 
 describe("migrations on boot in the playground", async () => {
 	await setupPlayground();
 
 	it("has applied the migrations before the first request", async () => {
 		expect(await $fetch("/api/migrations")).toEqual({ status: "done", migrated: true });
-		expect(await $fetch("/api/notes/1")).toEqual({ id: 1, title: "First note" });
+		expect(await $fetch("/api/notes/1", { headers: sessionHeaders() })).toEqual({
+			id: 1,
+			title: "First note",
+		});
 	});
 
 	it("stops the server when a migration is broken", async () => {
@@ -27,7 +30,7 @@ describe("migrations on boot in the playground", async () => {
 			expect(await answer.json()).toEqual({ status: "done", migrated: true });
 
 			// The database is empty, because nothing was applied: the read fails.
-			const response = await fetch(`${server.url}/api/notes/1`);
+			const response = await fetch(`${server.url}/api/notes/1`, { headers: sessionHeaders() });
 			expect(response.status).toBe(500);
 		} finally {
 			await server.stop();

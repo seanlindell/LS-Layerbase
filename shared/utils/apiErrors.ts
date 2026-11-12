@@ -30,6 +30,20 @@ export class ValidationError extends ApiError {
 	}
 }
 
+/** 401: the caller did not say who it is, or its credential is not valid. */
+export class UnauthorizedError extends ApiError {
+	constructor(message: string, payload?: unknown, options?: ErrorOptions) {
+		super(401, message, payload, options);
+	}
+}
+
+/** 403: the caller is known, but may not do this. */
+export class ForbiddenError extends ApiError {
+	constructor(message: string, payload?: unknown, options?: ErrorOptions) {
+		super(403, message, payload, options);
+	}
+}
+
 /** 404: the thing that the request names does not exist. */
 export class NotFoundError extends ApiError {
 	constructor(message: string, payload?: unknown, options?: ErrorOptions) {

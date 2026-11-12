@@ -1,14 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { asValue } from "awilix";
 import { registerServices } from "../container";
+import { apiKeys } from "../db/schema";
 import type { PlaygroundCradle } from "../container";
 
 // Builds the container once, after the migrations (file name order). Each request
 // gets a scope of it, with one value of its own.
 export default defineContainerPlugin<PlaygroundCradle>(
 	(tools) => {
-		tools.container.register({ db: tools.value(useDb()) });
 		registerServices(tools);
+		// After the shared registrations, so that these two replace the ones for tests.
+		tools.container.register({
+			db: tools.value(useDb()),
+			apiKeyRepository: tools.value(new SqliteApiKeyRepository(useDb(), apiKeys)),
+		});
 	},
 	{
 		scopePerRequest: true,

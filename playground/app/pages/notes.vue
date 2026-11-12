@@ -5,6 +5,15 @@ import type { Note } from "../../server/repositories/NoteRepository";
 // the existing note as the payload), "upstream" (502) and "bug" (500).
 const { run, notifySuccess } = useApi();
 
+// The note routes need a signed-in person or an API key. This "sign in" only sets
+// a cookie with a name; see server/utils/session.ts.
+const { data: session, refresh: refreshSession } = await useFetch("/api/session");
+
+async function signIn() {
+	const result = await run("/api/session", { method: "POST", body: { name: "playground" } });
+	if (result.Success) await refreshSession();
+}
+
 const title = ref("");
 const isSaving = ref(false);
 const created = ref<Note[]>([]);
@@ -37,6 +46,8 @@ async function addNote() {
 <template>
 	<section>
 		<h1>Notes</h1>
+		<p v-if="session?.user" data-testid="signed-in">Signed in as {{ session.user.name }}.</p>
+		<p v-else><button type="button" data-testid="sign-in" @click="signIn">Sign in</button> to add notes.</p>
 		<form data-testid="note-form" @submit.prevent="addNote">
 			<label>
 				Title
