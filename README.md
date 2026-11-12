@@ -4,7 +4,7 @@
 
 A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project: one API error contract, API-key authentication, database migrations on boot, a health check, a dependency-injection container and a typed fetch helper.
 
-**Status: in development.** The layer package, the playground app, the tests and CI are set up. The pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
+**Status: in development.** The layer setup and the API error contract are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
 
 ## Planned contents
 
@@ -36,6 +36,84 @@ export default defineNuxtConfig({
 ```
 
 How apps consume it (the `extends` form above, a git dependency, or a published package) is decided in #8.
+
+## API error contract
+
+Every API route reports a failure in one way: **the HTTP status is the real one, and the body carries a message written for the caller.** A failure is never sent with status 200, and the message of an unexpected error never reaches the caller.
+
+### Statuses
+
+Services and handlers throw a typed error. The wrappers below turn it into the response.
+
+| Throw                                  | Status     | Use it when                                                                                                   |
+| -------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------- |
+| `new ValidationError(message)`         | 400        | The content of the request is not acceptable.                                                                 |
+| `new NotFoundError(message)`           | 404        | The thing that the request names does not exist.                                                              |
+| `new ConflictError(message, existing)` | 409        | The request conflicts with the current state, for example a duplicate.                                        |
+| `new UpstreamError(message)`           | 502        | A service outside the app failed.                                                                             |
+| `new UnavailableError(message)`        | 503        | Something the app depends on is down or busy.                                                                 |
+| `new ApiError(status, message)`        | 400 to 599 | No class above fits.                                                                                          |
+| `httpError(status, message)`           | 4xx        | A one-off refusal inside a handler or a middleware. It is an h3 error, so it also works outside the wrappers. |
+| anything else                          | 500        | It is a bug. The caller gets a fixed message.                                                                 |
+
+Each typed error takes an optional payload as its second argument (third for `ApiError`). The caller receives it, so a 409 can carry the record that already exists.
+
+An h3 error with a 4xx status passes through with its message. h3 throws these itself, for example for a request body that is not JSON. An h3 error with a 5xx status is treated as unexpected, so throw `UpstreamError` or `UnavailableError` for a 5xx that the caller should understand.
+
+### Reads: `defineApiHandler`
+
+```ts
+// server/api/notes/[id].get.ts
+export default defineApiHandler(async (event) => {
+	const note = await findNote(getRouterParam(event, "id"));
+	if (!note) throw new NotFoundError("There is no note with that id.");
+
+	return note;
+});
+```
+
+On success the body is the returned value. On failure the response is an h3 error:
+
+```json
+{ "statusCode": 404, "statusMessage": "Not Found", "message": "There is no note with that id." }
+```
+
+The body has a `data` field when the error carried a payload. h3 adds `error: true` and the request `url`, and in development also a `stack`.
+
+### Writes: `defineActionHandler`
+
+```ts
+// server/api/notes/index.post.ts
+export default defineActionHandler(async (event) => {
+	const body = await readBody(event);
+
+	return ActionResult.ok("Note created.", await createNote(body)); // throws ConflictError for a duplicate
+});
+```
+
+The body is always an `ActionResult`, and the status says the same thing as `Success`:
+
+```jsonc
+// 200
+{ "Success": true, "Message": "Note created.", "ResponseObject": { "id": 2, "title": "Second note" } }
+
+// 409
+{ "Success": false, "Message": "A note with that title already exists.", "ResponseObject": { "id": 1, "title": "First note" } }
+```
+
+On a failure, `ResponseObject` is the payload of the error, or `null`. A handler returns `ActionResult.ok(...)` only; to refuse a write it throws. If untyped code returns a failed result anyway, the wrapper sends it with status 400.
+
+`ActionResult<T>` is exported from the layer's `shared/` folder as a type, together with `ActionSuccess<T>` and `ActionFailure`, so pages and server code use the same shape.
+
+### What is logged
+
+| Failure                                   | Logged                                                                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Typed error or h3 error with a 4xx status | Nothing. It is the caller's to fix.                                                                               |
+| Typed error with a 5xx status             | The error, with its stack and `cause`. The caller still gets the error's own message.                             |
+| Anything else                             | The original error, with its stack. The caller gets `The server could not complete the request. Try again later.` |
+
+Each log line starts with `[layerbase] <METHOD> <path> failed with <status>:` and goes to `console.error`. The path has no query string, because a query can hold secrets.
 
 ## Development
 

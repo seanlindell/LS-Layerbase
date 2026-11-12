@@ -41,6 +41,7 @@
 		"@nuxt/test-utils": "^4.4.0",
 		"@types/node": "^22.20.5",
 		"eslint": "^10.14.0",
+		"h3": "^1.15.11",
 		"nuxt": "^4.6.4",
 		"prettier": "^3.10.0",
 		"typescript": "^5.9.3",
