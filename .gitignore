@@ -30,3 +30,6 @@ logs
 
 # Claude
 .claude
+
+# Scratch files for AI assistants (review ledgers and similar)
+.ai
