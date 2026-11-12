@@ -17,4 +17,9 @@ describe("playground with the layer applied", async () => {
 		const html = await $fetch<string>("/");
 		expect(html).toContain('data-testid="layer-name">ls-layerbase<');
 	});
+
+	it("renders the notes page, which uses `useApi`", async () => {
+		const html = await $fetch<string>("/notes");
+		expect(html).toContain('data-testid="note-form"');
+	});
 });
