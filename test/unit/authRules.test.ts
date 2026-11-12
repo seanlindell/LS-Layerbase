@@ -66,6 +66,18 @@ describe("matchAuthRule", () => {
 		expect(matchAuthRule(rules, "HEAD", "/api/notes")?.scope).toBe("notes:read");
 	});
 
+	it("gives the same answer each time for a RegExp with the g or y flag", () => {
+		const stateful: AuthRule[] = [
+			{ path: /^\/api\/notes/g, scope: "notes:read" },
+			{ path: /\/api\/sticky/y, scope: "notes:write" },
+		];
+
+		for (let call = 0; call < 4; call++) {
+			expect(matchAuthRule(stateful, "GET", "/api/notes")?.scope).toBe("notes:read");
+			expect(matchAuthRule(stateful, "GET", "/api/sticky")?.scope).toBe("notes:write");
+		}
+	});
+
 	it("matches a string path exactly", () => {
 		expect(matchAuthRule(rules, "GET", "/api/notes/1")).toBeUndefined();
 		expect(matchAuthRule(rules, "DELETE", "/api/notes")).toBeUndefined();
@@ -348,6 +360,14 @@ describe("authorizeRequest", () => {
 			expect(
 				await authorizeRequest(request("POST", "/api/login", { origin: "https://app.example" }), policy()),
 			).toEqual({ allowed: true });
+		});
+
+		it("gives a signed-in person their identity on a public route", async () => {
+			expect(await authorizeRequest(request("GET", "/api/login"), policy(signedIn))).toEqual({
+				allowed: true,
+				auth: { kind: "session", user },
+			});
+			expect(await authorizeRequest(request("GET", "/api/login"), policy())).toEqual({ allowed: true });
 		});
 
 		it("keeps GET /api/health public by default, and lets a rule close it", async () => {

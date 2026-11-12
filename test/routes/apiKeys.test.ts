@@ -141,6 +141,13 @@ describe("API keys in the playground", async () => {
 			expect((await send("GET", "/api/notes/1", sessionHeaders())).status).toBe(200);
 		});
 
+		it("keeps its identity on a public route", async () => {
+			const result = await send("GET", "/api/session", sessionHeaders());
+
+			expect(result.json.auth).toEqual({ kind: "session", user: { name: "tester" } });
+			expect((await send("GET", "/api/session")).json.auth).toBeNull();
+		});
+
 		it("cannot write without an Origin header", async () => {
 			const result = await send("POST", "/api/notes", sessionHeaders(), { title: "No origin" });
 
