@@ -1,0 +1,30 @@
+# The playground with a PostgreSQL server that its health check also pings.
+# `scripts/image-health.sh` uses this to show healthy and unhealthy under Docker.
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: playground/Dockerfile
+    environment:
+      NUXT_POSTGRES_URL: postgres://postgres:postgres@postgres:5432/postgres
+    ports:
+      - "127.0.0.1:${PLAYGROUND_PORT:-3900}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Shorter than the values in the Dockerfile, so that the test does not wait minutes.
+    healthcheck:
+      interval: 2s
+      timeout: 3s
+      start_period: 5s
+      retries: 2
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

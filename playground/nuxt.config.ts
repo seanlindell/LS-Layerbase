@@ -12,6 +12,13 @@ export default defineNuxtConfig({
 	runtimeConfig: {
 		/** The SQLite file. The route tests point `NUXT_DATABASE_PATH` at a temporary file. */
 		databasePath: fileURLToPath(new URL("./.data/playground.sqlite", import.meta.url)),
+		/**
+		 * Optional. When set (`NUXT_POSTGRES_URL`), the health check also pings this
+		 * PostgreSQL server, as an example of an app-specific check.
+		 */
+		postgresUrl: "",
+		/** For the tests: wait this long before the migrations run (`NUXT_SLOW_MIGRATION_MS`). */
+		slowMigrationMs: 0,
 		layerbase: {
 			// Absolute, because `pnpm dev` runs from the repository root.
 			migrationsFolder: fileURLToPath(new URL("./drizzle", import.meta.url)),

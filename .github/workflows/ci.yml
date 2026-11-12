@@ -59,3 +59,14 @@ jobs:
 
       # Builds the playground and sends real requests to it.
       - run: pnpm test:routes
+
+  image-health:
+    name: image health
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # Builds the playground image and checks that Docker reports it as healthy,
+      # and as unhealthy while its database is stopped.
+      - run: ./scripts/image-health.sh
