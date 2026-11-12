@@ -8,6 +8,20 @@ export default defineNuxtConfig({
 	compatibilityDate: "2026-09-01",
 	devtools: { enabled: false },
 	typescript: { strict: true },
+
+	runtimeConfig: {
+		/** The SQLite file. The route tests point `NUXT_DATABASE_PATH` at a temporary file. */
+		databasePath: fileURLToPath(new URL("./.data/playground.sqlite", import.meta.url)),
+		layerbase: {
+			// Absolute, because `pnpm dev` runs from the repository root.
+			migrationsFolder: fileURLToPath(new URL("./drizzle", import.meta.url)),
+		},
+	},
+
+	nitro: {
+		// A native addon. Nitro must load it at run time and not bundle it.
+		externals: { external: ["better-sqlite3"] },
+	},
 	eslint: {
 		config: {
 			// Lint the whole repository, not just the playground.

@@ -1,16 +1,13 @@
-// A tiny in-memory store, so the playground has something to read and write.
-export interface Note {
-	id: number;
-	title: string;
-}
+import { eq } from "drizzle-orm";
+import { notes } from "../db/schema";
 
-const notes: Note[] = [{ id: 1, title: "First note" }];
+export type Note = typeof notes.$inferSelect;
 
 /** The message of the fake bug below. The tests check that it never reaches a caller. */
 export const SECRET_BUG_MESSAGE = "SQLITE_ERROR: no such table: secret_notes";
 
 export function findNote(id: number): Note {
-	const note = notes.find((item) => item.id === id);
+	const note = useDb().select().from(notes).where(eq(notes.id, id)).get();
 	if (!note) throw new NotFoundError(`There is no note with id ${id}.`);
 
 	return note;
@@ -26,11 +23,9 @@ export function createNote(title: unknown): Note {
 	if (clean === "bug") throw new Error(SECRET_BUG_MESSAGE);
 	if (clean === "upstream") throw new UpstreamError("The title service did not answer.");
 
-	const existing = notes.find((item) => item.title === clean);
+	const db = useDb();
+	const existing = db.select().from(notes).where(eq(notes.title, clean)).get();
 	if (existing) throw new ConflictError("A note with that title already exists.", existing);
 
-	const note = { id: notes.length + 1, title: clean };
-	notes.push(note);
-
-	return note;
+	return db.insert(notes).values({ title: clean }).returning().get();
 }
