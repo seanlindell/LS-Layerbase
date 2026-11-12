@@ -1,3 +1,5 @@
+<p><img src="assets/icon.svg" alt="" width="72" height="72"></p>
+
 # LS Layerbase
 
 A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project: one API error contract, API-key authentication, database migrations on boot, a health check, a dependency-injection container and a typed fetch helper.
