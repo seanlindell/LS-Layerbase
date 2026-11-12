@@ -102,13 +102,18 @@ export function matchAuthRule(
 	});
 }
 
-/** `Authorization: Bearer <key>`. The result is null when no bearer credential is sent. */
+/**
+ * `Authorization: Bearer <key>`. The result is null when the header has no bearer
+ * scheme. A bearer scheme with nothing after it gives an empty string, which is a
+ * presented (and bad) key: the caller meant to use a key, for example with a
+ * variable that was empty, and must not get a session's access.
+ */
 export function readBearerToken(authorization: string | undefined): string | null {
 	if (!authorization) return null;
 
 	const [scheme, ...rest] = authorization.trim().split(/\s+/);
 
-	return scheme?.toLowerCase() === "bearer" && rest.length > 0 ? rest.join(" ") : null;
+	return scheme?.toLowerCase() === "bearer" ? rest.join(" ") : null;
 }
 
 /**
