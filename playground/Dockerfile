@@ -9,11 +9,10 @@ RUN corepack enable
 WORKDIR /repo
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# No postinstall yet: `nuxt prepare` needs the source, which comes next.
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile
 
 COPY . .
-RUN pnpm rebuild && pnpm build
+RUN pnpm build
 
 # ---------------------------------------------------------------------------
 
