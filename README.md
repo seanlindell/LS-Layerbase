@@ -4,9 +4,9 @@
 
 A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project: one API error contract, API-key authentication, database migrations on boot, a health check, a dependency-injection container and a typed fetch helper.
 
-**Status: in development.** The layer setup, the API error contract, the `useApi` fetch helper, migrations on boot, the health check, the DI container and API keys are built. Nothing is published yet. The [issues](../../issues) describe the first version.
+**Status: version 0.1.0.** All pieces below are built and tested. While the version is `0.x`, a minor version can still change an API; the [changelog](CHANGELOG.md) says how to migrate.
 
-## Planned contents
+## Contents
 
 | Piece              | What it gives an app                                                                            | Issue |
 | ------------------ | ----------------------------------------------------------------------------------------------- | ----- |
@@ -26,16 +26,72 @@ A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing t
 - **Pinned versions.** Apps pin a release tag. Breaking changes only come with a new major version.
 - **Tested in isolation.** Every piece has unit tests, and the playground app exercises it end to end.
 
-## Using it (planned)
+## Using it
+
+The layer is a dependency of the app, pinned to a release tag.
+
+**1. Add it to `package.json`**, with the packages it expects the app to have:
+
+```jsonc
+{
+	"dependencies": {
+		"ls-layerbase": "github:seanlindell/LS-Layerbase#v0.1.0",
+		"awilix": "^13.0.0",
+		"drizzle-orm": "^0.45.0",
+		// and the app's own nuxt, vue and database driver
+	},
+}
+```
+
+**2. Extend it:**
 
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({
-	extends: ["github:seanlindell/LS-Layerbase#v0.1.0"],
+	extends: ["ls-layerbase"],
 });
 ```
 
-How apps consume it (the `extends` form above, a git dependency, or a published package) is decided in #8.
+Everything in the sections below is then auto-imported in the app and in its server code. Each piece is used only where the app calls it: the layer adds no routes, plugins or middleware by itself.
+
+**3. Outside Nuxt, import by path.** A Drizzle schema file (read by `drizzle-kit`) and a unit test do not have Nuxt's auto-imports:
+
+```ts
+import { sqliteApiKeysTable } from "ls-layerbase/server/utils/apiKeyTables";
+import { createTestContainer } from "ls-layerbase/server/utils/container";
+```
+
+The layer ships TypeScript source. Vitest must be told to transform it:
+
+```ts
+// vitest.config.ts
+export default defineConfig({ test: { server: { deps: { inline: ["ls-layerbase"] } } } });
+```
+
+### Why a git dependency
+
+| Way to consume                                             | Verdict                                                                                                                                                                                                                   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `extends: ["github:seanlindell/LS-Layerbase#v0.1.0"]` only | Not enough. The layer is fetched at build time and is not in `node_modules` under a name, so a schema file or a test cannot import from it, and the version is not in the lockfile.                                       |
+| **A git dependency pinned to a tag**                       | **Chosen.** It is in the lockfile, it can be imported by name, and it needs no registry account or token.                                                                                                                 |
+| A package on npm                                           | The best tool support, and the natural next step. It needs an npm scope and a publish token. The import paths and `extends: ["ls-layerbase"]` stay the same, so an app only changes the version string in `package.json`. |
+
+### Updates
+
+- **Releases** are tags `vX.Y.Z` with a [GitHub release](../../releases). [CHANGELOG.md](CHANGELOG.md) lists each version, and each breaking change has a **Migration** section that says what to change in an app.
+- **To update an app**, change the tag in `package.json`, run `pnpm install`, and read the changelog entries between the two versions.
+- **To get update pull requests**, try [Renovate](https://docs.renovatebot.com). Its npm manager can look up the tags of a GitHub repository for a git dependency. This has not been tested with this layer yet, so check that the first pull request arrives after a release. Dependabot handles a git dependency that is pinned to a tag poorly, so do not rely on it for this.
+
+```jsonc
+// renovate.json in the app
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended"],
+	"packageRules": [{ "matchPackageNames": ["ls-layerbase"], "commitMessageTopic": "Layerbase" }],
+}
+```
+
+The way that always works: watch the repository's releases on GitHub (Watch, Custom, Releases) to get a notification for each one.
 
 ## API error contract
 
@@ -429,7 +485,7 @@ Each bad key gets the same 401, so a caller cannot find out which keys exist. Th
 You need Node 22 or later and pnpm (the version is pinned in `package.json`).
 
 ```bash
-pnpm install   # also runs `nuxt prepare playground`
+pnpm install
 pnpm dev       # start the playground app, which extends the layer
 ```
 
@@ -466,6 +522,14 @@ The layer never brings a second copy of a package into an app:
 - `nuxt`, `vue`, `drizzle-orm` and `awilix` are **peer dependencies** with an explicit range. `drizzle-orm` and `awilix` are required even by an app that does not use the migration helpers or the container, because Nuxt type-checks all files of a layer.
 - The database drivers (`better-sqlite3`, `pg`) are not dependencies of the layer at all. The app creates the connection and passes it in.
 - The versions the layer is developed and tested with are in `devDependencies`.
+
+### Releasing
+
+1. Move the entries under `## [Unreleased]` in `CHANGELOG.md` to a new section `## [X.Y.Z] - YYYY-MM-DD`, add a **Migration** part for each breaking change, and update the links at the end of the file.
+2. Set the same version in `package.json`.
+3. Merge that to `main`, then tag it: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The tag starts the release workflow. It runs the full CI, checks that the tag is the version in `package.json`, and makes the GitHub release with the changelog section as its notes. The package has no install scripts, because a package manager does not run them for a git dependency without asking.
 
 ## License
 
