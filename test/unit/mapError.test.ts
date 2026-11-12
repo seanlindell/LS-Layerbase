@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	ApiError,
 	ConflictError,
+	ForbiddenError,
 	NotFoundError,
+	UnauthorizedError,
 	UnavailableError,
 	UpstreamError,
 	ValidationError,
@@ -15,6 +17,8 @@ const SECRET = "SQLITE_ERROR: no such table: users";
 describe("mapError: typed errors", () => {
 	it.each([
 		[new ValidationError("Bad title."), 400],
+		[new UnauthorizedError("Sign in."), 401],
+		[new ForbiddenError("Not for you."), 403],
 		[new NotFoundError("No such note."), 404],
 		[new ConflictError("Already exists."), 409],
 		[new UpstreamError("The mail service failed."), 502],

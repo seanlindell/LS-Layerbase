@@ -59,3 +59,12 @@ export async function waitForServer(url: string): Promise<Response> {
 	}
 	throw new Error(`No answer from ${url}`);
 }
+
+/** The headers of a request from a signed-in browser. See playground/server/utils/session.ts. */
+export function sessionHeaders(baseUrl?: string): Record<string, string> {
+	const headers: Record<string, string> = { cookie: "playground-user=tester" };
+	// A browser sends `Origin` on each request that changes state.
+	if (baseUrl) headers.origin = new URL(baseUrl).origin;
+
+	return headers;
+}

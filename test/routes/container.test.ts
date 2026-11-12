@@ -1,6 +1,6 @@
 import { $fetch } from "@nuxt/test-utils/e2e";
 import { describe, expect, it } from "vitest";
-import { setupPlayground } from "./setupPlayground";
+import { sessionHeaders, setupPlayground } from "./setupPlayground";
 
 interface RequestIdAnswer {
 	requestId: string;
@@ -12,7 +12,10 @@ describe("container in the playground", async () => {
 	await setupPlayground();
 
 	it("resolves a service from a route", async () => {
-		expect(await $fetch("/api/notes/1")).toEqual({ id: 1, title: "First note" });
+		expect(await $fetch("/api/notes/1", { headers: sessionHeaders() })).toEqual({
+			id: 1,
+			title: "First note",
+		});
 	});
 
 	it("gives each request its own scope, and shares singletons between them", async () => {

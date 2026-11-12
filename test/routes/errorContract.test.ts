@@ -1,13 +1,13 @@
-import { fetch } from "@nuxt/test-utils/e2e";
+import { fetch, url } from "@nuxt/test-utils/e2e";
 import { describe, expect, it } from "vitest";
-import { setupPlayground } from "./setupPlayground";
+import { sessionHeaders, setupPlayground } from "./setupPlayground";
 
 const SECRET = "SQLITE_ERROR";
 
 async function post(body: string) {
 	const response = await fetch("/api/notes", {
 		method: "POST",
-		headers: { "content-type": "application/json" },
+		headers: { "content-type": "application/json", ...sessionHeaders(url("/")) },
 		body,
 	});
 
@@ -15,7 +15,7 @@ async function post(body: string) {
 }
 
 async function get(path: string) {
-	const response = await fetch(path, { headers: { accept: "application/json" } });
+	const response = await fetch(path, { headers: { accept: "application/json", ...sessionHeaders() } });
 
 	return { status: response.status, text: await response.text() };
 }
