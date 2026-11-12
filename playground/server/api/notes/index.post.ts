@@ -2,5 +2,5 @@
 export default defineActionHandler(async (event) => {
 	const body = await readBody<{ title?: unknown }>(event);
 
-	return ActionResult.ok("Note created.", createNote(body?.title));
+	return ActionResult.ok("Note created.", resolve(event, "noteService").create(body?.title));
 });

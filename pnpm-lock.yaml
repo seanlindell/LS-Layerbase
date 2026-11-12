@@ -181,6 +181,9 @@ importers:
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
+      awilix:
+        specifier: ^13.0.5
+        version: 13.0.5
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -2064,6 +2067,10 @@ packages:
     hasBin: true
     peerDependencies:
       postcss: ^8.1.0
+
+  awilix@13.0.5:
+    resolution: {integrity: sha512-ORtca6suBdYA1FyTzqHEZDvEuUwo3lPDDBRm7GrzHgi6STESzJKdBtpqfTzObdMj1NGQUWX6k26E3EbQaGJX5Q==}
+    engines: {node: '>=20.0.0'}
 
   b4a@1.9.0:
     resolution: {integrity: sha512-dpfcF9fDNR6++cthXR67iyhgqWy9CBouAvIWhIntzBG6cvK/cnIPiZQjBwi/ZqjjBEDGfoNDtmB0kTjroOJ3pQ==}
@@ -6649,6 +6656,10 @@ snapshots:
       picocolors: 1.1.1
       postcss: 8.5.32
       postcss-value-parser: 4.2.0
+
+  awilix@13.0.5:
+    dependencies:
+      fast-glob: 3.3.3
 
   b4a@1.9.0: {}
 
