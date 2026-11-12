@@ -92,7 +92,13 @@ export function matchAuthRule(
 			if (!methods.some((candidate) => normalizeMethod(candidate) === wanted)) return false;
 		}
 
-		return typeof rule.path === "string" ? rule.path === path : rule.path.test(path);
+		if (typeof rule.path === "string") return rule.path === path;
+
+		// A RegExp with the `g` or `y` flag remembers where its last match ended.
+		// Without this, the same request could match on one call and not on the next.
+		rule.path.lastIndex = 0;
+
+		return rule.path.test(path);
 	});
 }
 
@@ -270,10 +276,10 @@ export async function authorizeRequest<User = unknown>(
 		return { allowed: false, status: 403, message: AUTH_MESSAGES.crossSite };
 	}
 
-	if (rule?.public) return { allowed: true };
-
+	// A public route needs no session, but a person who is signed in keeps their
+	// identity there, as a caller with a key does.
 	const user = policy.session ? await policy.session() : null;
-	if (user === null || user === undefined) return UNAUTHORIZED;
+	if (user === null || user === undefined) return rule?.public ? { allowed: true } : UNAUTHORIZED;
 
 	return { allowed: true, auth: { kind: "session", user } };
 }
