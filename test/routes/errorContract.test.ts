@@ -1,6 +1,6 @@
-import { fileURLToPath } from "node:url";
-import { fetch, setup } from "@nuxt/test-utils/e2e";
+import { fetch } from "@nuxt/test-utils/e2e";
 import { describe, expect, it } from "vitest";
+import { setupPlayground } from "./setupPlayground";
 
 const SECRET = "SQLITE_ERROR";
 
@@ -21,11 +21,7 @@ async function get(path: string) {
 }
 
 describe("error contract in the playground", async () => {
-	await setup({
-		rootDir: fileURLToPath(new URL("../../playground", import.meta.url)),
-		server: true,
-		browser: false,
-	});
+	await setupPlayground();
 
 	describe("defineApiHandler (reads)", () => {
 		it("returns the value on success", async () => {

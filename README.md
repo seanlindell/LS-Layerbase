@@ -4,7 +4,7 @@
 
 A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project: one API error contract, API-key authentication, database migrations on boot, a health check, a dependency-injection container and a typed fetch helper.
 
-**Status: in development.** The layer setup, the API error contract and the `useApi` fetch helper are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
+**Status: in development.** The layer setup, the API error contract, the `useApi` fetch helper and migrations on boot are built. The other pieces below are not built yet, and nothing is published. The [issues](../../issues) describe the first version.
 
 ## Planned contents
 
@@ -168,6 +168,55 @@ export default defineNuxtPlugin((nuxtApp) => {
 
 `run` sends an error notification on each failure. Pass `silent: true` when the page shows the failure itself. With no listener, nothing is shown.
 
+## Migrations on boot
+
+The layer applies an app's [Drizzle](https://orm.drizzle.team) migrations when the server starts, and keeps a readiness flag that other code can read. The app owns the database connection and passes it in.
+
+### SQLite (`better-sqlite3`)
+
+```ts
+// server/plugins/00.migrate.ts
+export default defineMigrationPlugin(() => ({ migrate: sqliteMigrator(db) }));
+```
+
+### PostgreSQL (`pg`)
+
+```ts
+// server/plugins/00.migrate.ts
+import pg from "pg";
+
+export default defineMigrationPlugin(() => ({
+	migrate: postgresMigrator({ createClient: () => new pg.Client(process.env.DATABASE_URL) }),
+}));
+```
+
+`createClient` is called twice. One connection holds a session-level advisory lock for the whole run, so that two instances which start together do not apply the same migrations; the other runs the migrations and sends their notices (`RAISE NOTICE`, `RAISE WARNING`) to the log. Do not return a client from a pool.
+
+Name the plugin file so that it sorts before the plugins that use the database (`00.migrate.ts`).
+
+### What happens at startup
+
+- **Success:** `isMigrated()` becomes true and `[layerbase] Database migrations are applied.` is logged.
+- **Failure:** the error is logged and the process stops with exit code 1. The server does not keep running on a schema that is half applied.
+
+SQLite migrations run synchronously, so the server accepts no request before they finish. PostgreSQL migrations are asynchronous, and Nitro does not wait for a plugin, so a request can arrive while they run. Use the readiness functions for code that must wait:
+
+| Function            | Result                                                                                                      |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `isMigrated()`      | `true` when the schema is ready.                                                                            |
+| `migrationStatus()` | `"pending"`, `"running"`, `"done"` or `"failed"`.                                                           |
+| `whenMigrated()`    | A promise that resolves when the schema is ready.                                                           |
+| `markMigrated()`    | Says that the schema is ready, for an app that applies migrations in its own way inside the server process. |
+
+### Configuration
+
+| Runtime config               | Environment variable               | Default     | Meaning                                                                                                                                                    |
+| ---------------------------- | ---------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `layerbase.migrationsFolder` | `NUXT_LAYERBASE_MIGRATIONS_FOLDER` | `./drizzle` | The folder with the migrations, relative to the working directory of the server.                                                                           |
+| `layerbase.migrateOnBoot`    | `NUXT_LAYERBASE_MIGRATE_ON_BOOT`   | `true`      | Set to `false` for an app that runs its migrations elsewhere, for example as a deploy step. Nothing is applied, and `isMigrated()` is true from the start. |
+
+Both can also be passed to `defineMigrationPlugin` as `folder` and `enabled`. `migrate` can be any function that applies the migrations and throws when one fails, so another driver or migration tool also works.
+
 ## Development
 
 You need Node 22 or later and pnpm (the version is pinned in `package.json`).
@@ -188,6 +237,13 @@ pnpm dev       # start the playground app, which extends the layer
 
 CI runs all of these on each pull request and on each push to `main`.
 
+The PostgreSQL migration tests need a server. Each test makes its own database on it and drops it afterwards:
+
+```bash
+docker run -d --name layerbase-test-pg -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:17-alpine
+TEST_POSTGRES_URL=postgres://postgres:postgres@localhost:55432/postgres pnpm test:unit
+```
+
 ### Layout
 
 | Path                                           | Contents                                                                                         |
@@ -198,7 +254,11 @@ CI runs all of these on each pull request and on each push to `main`.
 
 ### Dependencies
 
-Packages that the app also uses (`nuxt`, `vue`, and later `drizzle-orm`, the database drivers and similar) are **peer dependencies** with an explicit range, so the layer never brings a second copy into an app. A peer that only one piece needs is marked optional. The versions the layer is developed and tested with are in `devDependencies`.
+The layer never brings a second copy of a package into an app:
+
+- `nuxt`, `vue` and `drizzle-orm` are **peer dependencies** with an explicit range. `drizzle-orm` is required even by an app that does not use the migration helpers, because Nuxt type-checks all files of a layer.
+- The database drivers (`better-sqlite3`, `pg`) are not dependencies of the layer at all. The app creates the connection and passes it in.
+- The versions the layer is developed and tested with are in `devDependencies`.
 
 ## License
 
