@@ -99,3 +99,32 @@ export function createHealthProbe(options: HealthProbeOptions = {}): () => Promi
 		return problem === null;
 	};
 }
+
+/**
+ * A probe whose options come from a function that runs on the first call. The
+ * function can open a database, and that can fail. Such a failure counts as
+ * unhealthy, like a failed check, and the function runs again on the next call.
+ */
+export function createLazyHealthProbe(
+	options: () => HealthProbeOptions,
+	log: Pick<Console, "warn"> = console,
+): () => Promise<boolean> {
+	let probe: (() => Promise<boolean>) | undefined;
+	let lastProblem: string | undefined;
+
+	return async () => {
+		if (!probe) {
+			try {
+				probe = createHealthProbe(options());
+			} catch (error) {
+				const problem = error instanceof Error ? error.message : String(error);
+				if (problem !== lastProblem) log.warn(`[layerbase] Health check could not be set up (${problem}).`);
+				lastProblem = problem;
+
+				return false;
+			}
+		}
+
+		return await probe();
+	};
+}

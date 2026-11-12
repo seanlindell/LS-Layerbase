@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createHealthProbe } from "~~/server/utils/healthProbe";
+import { createHealthProbe, createLazyHealthProbe } from "~~/server/utils/healthProbe";
 import { markMigrated, setMigrationStatus } from "~~/server/utils/migrationState";
 
 const quiet = { info: () => undefined, warn: () => undefined };
@@ -144,5 +144,35 @@ describe("createHealthProbe", () => {
 		await probe();
 		await probe();
 		expect(log.info).toHaveBeenCalledOnce();
+	});
+});
+
+describe("createLazyHealthProbe", () => {
+	it("builds the options on the first call only", async () => {
+		const options = vi.fn(() => ({ ping: async () => undefined, log: quiet }));
+		const probe = createLazyHealthProbe(options, quiet);
+		expect(options).not.toHaveBeenCalled();
+
+		expect(await probe()).toBe(true);
+		expect(await probe()).toBe(true);
+		expect(options).toHaveBeenCalledOnce();
+	});
+
+	it("is unhealthy when the options cannot be built, and tries again on the next call", async () => {
+		const log = { warn: vi.fn() };
+		let databaseOpens = false;
+		const probe = createLazyHealthProbe(() => {
+			if (!databaseOpens) throw new Error("unable to open database file");
+
+			return { ping: async () => undefined, log: quiet };
+		}, log);
+
+		expect(await probe()).toBe(false);
+		expect(await probe()).toBe(false);
+		expect(log.warn).toHaveBeenCalledOnce();
+		expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("unable to open database file"));
+
+		databaseOpens = true;
+		expect(await probe()).toBe(true);
 	});
 });

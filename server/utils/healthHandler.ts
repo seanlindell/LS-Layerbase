@@ -1,4 +1,4 @@
-import { createHealthProbe } from "./healthProbe";
+import { createLazyHealthProbe } from "./healthProbe";
 import type { HealthProbeOptions } from "./healthProbe";
 
 /**
@@ -12,13 +12,13 @@ import type { HealthProbeOptions } from "./healthProbe";
  * has no version, host name or error text, because the route is public.
  *
  * The options come from a function, which runs on the first request, so that
- * nothing touches the database when the module loads.
+ * nothing touches the database when the module loads. If that function throws,
+ * the answer is the same 503.
  */
 export function defineHealthHandler(options: () => HealthProbeOptions = () => ({})) {
-	let probe: (() => Promise<boolean>) | undefined;
+	const probe = createLazyHealthProbe(options);
 
 	return defineEventHandler(async (event) => {
-		probe ??= createHealthProbe(options());
 		const ok = await probe();
 
 		setResponseStatus(event, ok ? 200 : 503);
