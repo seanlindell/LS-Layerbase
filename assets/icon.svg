@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LS Layerbase">
+	<title>LS Layerbase</title>
+	<rect width="64" height="64" rx="14" fill="#0B1220"/>
+	<polygon points="11.2,38 32,50 32,56 11.2,44" fill="#6366F1"/>
+	<polygon points="32,50 52.8,38 52.8,44 32,56" fill="#4338CA"/>
+	<polygon points="32,26 52.8,38 32,50 11.2,38" fill="#818CF8"/>
+	<polygon points="11.2,29 32,41 32,47 11.2,35" fill="#0EA5C4"/>
+	<polygon points="32,41 52.8,29 52.8,35 32,47" fill="#0E7490"/>
+	<polygon points="32,17 52.8,29 32,41 11.2,29" fill="#22D3EE"/>
+	<polygon points="11.2,20 32,32 32,38 11.2,26" fill="#00B56C"/>
+	<polygon points="32,32 52.8,20 52.8,26 32,38" fill="#0B7A54"/>
+	<polygon points="32,8 52.8,20 32,32 11.2,20" fill="#00DC82"/>
+</svg>
