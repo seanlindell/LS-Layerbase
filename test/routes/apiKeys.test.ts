@@ -115,6 +115,12 @@ describe("API keys in the playground", async () => {
 			expect(result.status).toBe(403);
 		});
 
+		it("answers 401 for an empty key, also when a session cookie is sent", async () => {
+			const result = await send("GET", "/api/keys", { ...sessionHeaders(), authorization: "Bearer" });
+
+			expect(result.status).toBe(401);
+		});
+
 		it("sets the identity of the request", async () => {
 			const key = await issueKey("Reader", ["notes:read"]);
 			const result = await send("GET", "/api/session", bearer(key.PlainTextKey));

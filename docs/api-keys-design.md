@@ -144,7 +144,7 @@ A handler can ask for more with `requireAuth(event)`, `requireScope(event, scope
 
 ### Steps for a guarded request
 
-1. **Read `Authorization: Bearer <key>`.** A key is read from this header only, never from the query string.
+1. **Read `Authorization: Bearer <key>`.** A key is read from this header only, never from the query string. `Bearer` with nothing after it counts as a presented key that is not valid (401), and does not fall back to the session.
 2. **If a key is presented, it is the credential**, also when a session cookie comes with it. Otherwise an agent that drives a signed-in browser would get the person's access.
    - Authenticate it. Any failure is 401 with one message.
    - Call the rate-limit hook, if there is one. A refusal is 429 with `Retry-After`.

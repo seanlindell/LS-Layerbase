@@ -90,11 +90,15 @@ describe("readBearerToken", () => {
 		expect(readBearerToken("bearer   abc  ")).toBe("abc");
 	});
 
-	it("gives null without one", () => {
+	it("gives null without a bearer scheme", () => {
 		expect(readBearerToken(undefined)).toBeNull();
 		expect(readBearerToken("")).toBeNull();
 		expect(readBearerToken("Basic abc")).toBeNull();
-		expect(readBearerToken("Bearer")).toBeNull();
+	});
+
+	it("gives an empty key, not null, for a bearer scheme with nothing after it", () => {
+		expect(readBearerToken("Bearer")).toBe("");
+		expect(readBearerToken("Bearer   ")).toBe("");
 	});
 });
 
@@ -251,6 +255,18 @@ describe("authorizeRequest", () => {
 			);
 
 			expect(decision).toMatchObject({ allowed: false, status: 403 });
+		});
+
+		it("does not fall back to the session when the key is empty", async () => {
+			for (const authorization of ["Bearer", "Bearer ", "bearer   "]) {
+				const decision = await authorizeRequest(
+					request("GET", "/api/account", { authorization }),
+					policy(signedIn),
+				);
+
+				expect(decision).toMatchObject({ allowed: false, status: 401 });
+			}
+			expect(audit.map((entry) => entry.reason)).toEqual(["malformed", "malformed", "malformed"]);
 		});
 
 		it("does not fall back to the session when the key is bad", async () => {
