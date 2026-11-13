@@ -35,7 +35,7 @@ export class NoteService {
 		if (clean === "upstream") throw new UpstreamError("The title service did not answer.");
 
 		const existing = this.noteRepository.findByTitle(clean);
-		if (existing) throw new ConflictError("A note with that title already exists.", existing);
+		if (existing) throw new ConflictError("A note with that title already exists.", { payload: existing });
 
 		return this.noteRepository.create(clean);
 	}

@@ -1,6 +1,6 @@
 {
 	"name": "ls-layerbase",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "A Nuxt layer with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project.",
 	"private": true,
 	"type": "module",

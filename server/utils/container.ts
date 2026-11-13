@@ -2,13 +2,6 @@ import { InjectionMode, Lifetime, asClass, asFunction, asValue, createContainer 
 import type { AwilixContainer, BuildResolver, Constructor, DisposableResolver, Resolver } from "awilix";
 import type { H3Event } from "h3";
 
-declare module "h3" {
-	interface H3EventContext {
-		/** The container for this request: the app's container, or a scope of it. */
-		container?: AwilixContainer;
-	}
-}
-
 /**
  * How long one instance lives.
  *
@@ -105,7 +98,7 @@ export function setRootContainer(container: AwilixContainer | undefined): void {
  * the app's root container.
  */
 export function useContainer<Cradle extends object>(event?: H3Event): AwilixContainer<Cradle> {
-	const container = event?.context.container ?? (globalThis as { [KEY]?: AwilixContainer })[KEY];
+	const container = event?.context.layerbase?.container ?? (globalThis as { [KEY]?: AwilixContainer })[KEY];
 	if (!container) {
 		throw new Error(
 			"[layerbase] There is no container yet. Add a server plugin with `defineContainerPlugin`, and name it so that it runs before the code that resolves from it.",

@@ -3,11 +3,12 @@ import type { Note } from "../../server/repositories/NoteRepository";
 
 // Try these titles: a new one (200), an empty one (400), "First note" (409, with
 // the existing note as the payload), "upstream" (502) and "bug" (500).
-const { run, notifySuccess } = useApi();
+const { run, notifySuccess, watchFetchError } = useApi();
 
 // The note routes need a signed-in person or an API key. This "sign in" only sets
 // a cookie with a name; see server/utils/session.ts.
-const { data: session, refresh: refreshSession } = await useFetch("/api/session");
+const { data: session, error: sessionError, refresh: refreshSession } = await useFetch("/api/session");
+watchFetchError(sessionError, "Could not read the session");
 
 async function signIn() {
 	const result = await run("/api/session", { method: "POST", body: { name: "playground" } });

@@ -1,6 +1,6 @@
 import type { ApiKeyAuditEntry, ApiKeyAuthResult, ApiKeyIdentity } from "./apiKeyService";
 
-/** Who is making the request. Set by the auth middleware as `event.context.auth`. */
+/** Who is making the request. Set by the auth middleware as `event.context.layerbase.auth`. */
 export type AuthIdentity<User = unknown> =
 	({ kind: "key" } & ApiKeyIdentity) | { kind: "session"; user: User };
 

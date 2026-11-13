@@ -4,7 +4,7 @@
 
 A [Nuxt layer](https://nuxt.com/docs/getting-started/layers) with the plumbing that small, self-hosted Nuxt apps tend to rewrite for each project: one API error contract, API-key authentication, database migrations on boot, a health check, a dependency-injection container and a typed fetch helper.
 
-**Status: version 0.1.0.** All pieces below are built and tested. While the version is `0.x`, a minor version can still change an API; the [changelog](CHANGELOG.md) says how to migrate.
+**Status: version 0.2.0.** All pieces below are built and tested. While the version is `0.x`, a minor version can still change an API; the [changelog](CHANGELOG.md) says how to migrate.
 
 ## Contents
 
@@ -35,7 +35,7 @@ The layer is a dependency of the app, pinned to a release tag.
 ```jsonc
 {
 	"dependencies": {
-		"ls-layerbase": "github:seanlindell/LS-Layerbase#v0.1.0",
+		"ls-layerbase": "github:seanlindell/LS-Layerbase#v0.2.0",
 		"awilix": "^13.0.0",
 		"drizzle-orm": "^0.45.0",
 		// and the app's own nuxt, vue and database driver
@@ -72,7 +72,7 @@ export default defineConfig({ test: { server: { deps: { inline: ["ls-layerbase"]
 
 | Way to consume                                             | Verdict                                                                                                                                                                                                                   |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `extends: ["github:seanlindell/LS-Layerbase#v0.1.0"]` only | Not enough. The layer is fetched at build time and is not in `node_modules` under a name, so a schema file or a test cannot import from it, and the version is not in the lockfile.                                       |
+| `extends: ["github:seanlindell/LS-Layerbase#v0.2.0"]` only | Not enough. The layer is fetched at build time and is not in `node_modules` under a name, so a schema file or a test cannot import from it, and the version is not in the lockfile.                                       |
 | **A git dependency pinned to a tag**                       | **Chosen.** It is in the lockfile, it can be imported by name, and it needs no registry account or token.                                                                                                                 |
 | A package on npm                                           | The best tool support, and the natural next step. It needs an npm scope and a publish token. The import paths and `extends: ["ls-layerbase"]` stay the same, so an app only changes the version string in `package.json`. |
 
@@ -101,18 +101,28 @@ Every API route reports a failure in one way: **the HTTP status is the real one,
 
 Services and handlers throw a typed error. The wrappers below turn it into the response.
 
-| Throw                                  | Status     | Use it when                                                                                                   |
-| -------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------- |
-| `new ValidationError(message)`         | 400        | The content of the request is not acceptable.                                                                 |
-| `new NotFoundError(message)`           | 404        | The thing that the request names does not exist.                                                              |
-| `new ConflictError(message, existing)` | 409        | The request conflicts with the current state, for example a duplicate.                                        |
-| `new UpstreamError(message)`           | 502        | A service outside the app failed.                                                                             |
-| `new UnavailableError(message)`        | 503        | Something the app depends on is down or busy.                                                                 |
-| `new ApiError(status, message)`        | 400 to 599 | No class above fits.                                                                                          |
-| `httpError(status, message)`           | 4xx        | A one-off refusal inside a handler or a middleware. It is an h3 error, so it also works outside the wrappers. |
-| anything else                          | 500        | It is a bug. The caller gets a fixed message.                                                                 |
+| Throw                                 | Status     | Use it when                                                                                                   |
+| ------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------- |
+| `new ValidationError(message)`        | 400        | The content of the request is not acceptable.                                                                 |
+| `new NotFoundError(message)`          | 404        | The thing that the request names does not exist.                                                              |
+| `new ConflictError(message, options)` | 409        | The request conflicts with the current state, for example a duplicate.                                        |
+| `new UpstreamError(message)`          | 502        | A service outside the app failed.                                                                             |
+| `new UnavailableError(message)`       | 503        | Something the app depends on is down or busy.                                                                 |
+| `new ApiError(status, message)`       | 400 to 599 | No class above fits.                                                                                          |
+| `httpError(status, message)`          | 4xx        | A one-off refusal inside a handler or a middleware. It is an h3 error, so it also works outside the wrappers. |
+| anything else                         | 500        | It is a bug. The caller gets a fixed message.                                                                 |
 
-Each typed error takes an optional payload as its second argument (third for `ApiError`). The caller receives it, so a 409 can carry the record that already exists.
+Each typed error takes an optional options object as its second argument (third for `ApiError`):
+
+```ts
+throw new ConflictError("A note with that title already exists.", { payload: existing });
+throw new UpstreamError("The mail service did not answer.", { cause: error });
+```
+
+- `payload` is sent to the caller, so a 409 can carry the record that already exists.
+- `cause` is the error that led to this one. It goes to the server log with a 5xx, and never to the caller.
+
+The errors are in `shared/`, so code in the browser can throw them too, and `notifyError` shows their message.
 
 An h3 error with a 4xx status passes through with its message. h3 throws these itself, for example for a request body that is not JSON. An h3 error with a 5xx status is treated as unexpected, so throw `UpstreamError` or `UnavailableError` for a 5xx that the caller should understand.
 
@@ -206,18 +216,33 @@ On failure `run` resolves to `{ Success: false, Message, ResponseObject, Status 
 The other options of `run` are the options of `$fetch`. `useApi()` also returns:
 
 - `errorMessage(error)` and `errorStatus(error)`: the message and the status for anything that a request threw, for code that calls `$fetch` or `useFetch` directly.
-- `notifyError(error, title?)` and `notifySuccess(title, message?)`.
+- `watchFetchError(error, title?)`: sends an error notification each time a `useFetch` read fails. Call it in `setup`:
+
+  ```ts
+  const { data, error } = await useFetch("/api/notes");
+  watchFetchError(error, "Could not load the notes");
+  ```
+
+- `notifyError(failure, title?)`: an error notification. `failure` can be a message the app wrote (a string), an `ApiError`, or anything a request threw. Any other error shows `Something went wrong. Try again.`, because its text was not written for a person.
+- `notifyWarning(title, message?)`, `notifyInfo(title, message?)` and `notifySuccess(title, message?)`.
+- `notify(notification)`: sends any notification as it is.
 
 ### Showing notifications
 
-The layer has no UI library. It calls the Nuxt hook `layerbase:notify` with `{ kind: "error" | "success", title, message? }`, and the app shows it. With Nuxt UI:
+The layer has no UI library. It calls the Nuxt hook `layerbase:notify` with `{ kind, title, message?, status? }`, and the app shows it.
+
+- `kind` is `"error"`, `"warning"`, `"info"` or `"success"`.
+- `status` is set on an error that has an HTTP status: a failed request (`null` when no response arrived) or an `ApiError`. This is the one place to handle, for example, a 401.
+
+With Nuxt UI:
 
 ```ts
 // app/plugins/notify.ts
 export default defineNuxtPlugin((nuxtApp) => {
 	const toast = useToast();
-	nuxtApp.hook("layerbase:notify", ({ kind, title, message }) => {
-		toast.add({ title, description: message, color: kind === "error" ? "error" : "success" });
+	nuxtApp.hook("layerbase:notify", ({ kind, title, message, status }) => {
+		if (status === 401) return navigateTo("/login");
+		toast.add({ title, description: message, color: kind });
 	});
 });
 ```
@@ -291,7 +316,7 @@ export default defineHealthHandler(() => ({
 | Migrations done, and each check passed within the timeout | 200    | `{ "ok": true }`  |
 | Anything else                                             | 503    | `{ "ok": false }` |
 
-- **The bodies are fixed.** They have no version, host name or error text, because the route is public. The reason for a failure goes to the server log, once when the result changes and not on each probe.
+- **The bodies are fixed.** They have no version, host name or error text, because the route is public. The reason for a failure goes to the server log, once when the result changes and not on each probe. An app that must keep a health body of its own uses the probe without the handler; see [Keep your own body](#keep-your-own-body).
 - **Never cached:** each answer has `Cache-Control: no-store`.
 - **One query at a time.** Probes that arrive while a check is still running wait for that run and start no second one. A stalled database thus holds one connection, however many probes arrive, and each probe still gets its 503 after the timeout.
 - **Public.** Keep the route out of authentication and rate limits.
@@ -304,6 +329,23 @@ export default defineHealthHandler(() => ({
 | `checks`            | `{}`    | More checks by name, for example `{ queue: () => queue.ping() }`. A check fails when it throws, rejects or gives `false`. The name is used in the log only. |
 | `timeoutMs`         | `2000`  | How long one check may take.                                                                                                                                |
 | `requireMigrations` | `true`  | Answer 503 until `isMigrated()` is true. Set it to `false` in an app that does not use the migration plugin.                                                |
+
+### Keep your own body
+
+`defineHealthHandler` always answers `{ "ok": … }`. When callers already read another body, build the route on `createLazyHealthProbe`, which takes the same options and does the same checks:
+
+```ts
+// server/api/health.get.ts
+const probe = createLazyHealthProbe(() => ({ ping: () => db.run(sql`select 1`) }));
+
+export default defineEventHandler(async (event) => {
+	const ok = await probe();
+	setResponseStatus(event, ok ? 200 : 503);
+	setResponseHeader(event, "Cache-Control", "no-store");
+
+	return { Status: ok ? "ok" : "unavailable" };
+});
+```
 
 ### Docker `HEALTHCHECK`
 
@@ -382,7 +424,7 @@ export default defineApiHandler((event) => {
 });
 ```
 
-`resolve(event, name)` uses the container of the request. `resolve(name)` uses the root container, for server plugins and tasks. `useContainer<AppCradle>(event?)` gives the container itself. Services throw the typed errors of the error contract, and the handler wrappers turn them into responses.
+`resolve(event, name)` uses the container of the request, which the plugin keeps in `event.context.layerbase.container`. The layer does not use `event.context.container`, so an app can still declare that field with its own type. `resolve(name)` uses the root container, for server plugins and tasks. `useContainer<AppCradle>(event?)` gives the container itself. Services throw the typed errors of the error contract, and the handler wrappers turn them into responses.
 
 ### Test with fakes
 
@@ -462,8 +504,9 @@ It guards the paths under `/api/` (set `protect` for others). The first rule tha
 So a new route is closed to anonymous callers, and closed to keys, until a rule names it. `GET /api/health` is public unless a rule of the app says otherwise.
 
 - A key is read from `Authorization: Bearer <key>` only. When a key is sent, it is the credential, also if a session cookie comes with it.
+- `Authorization: Bearer` with nothing after it counts as a malformed key: the answer is 401, and the session cookie is not tried. A client that sends the header has chosen a key.
 - **CSRF:** a request without a key that changes state (not `GET`, `HEAD` or `OPTIONS`) must have an `Origin` header that names the app's host, or one of `allowedOrigins`. A request with a key needs no `Origin`.
-- The request's identity is `event.context.auth`: `{ kind: "key", keyId, name, scopes }` or `{ kind: "session", user }`. In a handler, `requireAuth(event)`, `requireSession(event)` and `requireScope(event, scope)` give it or throw.
+- The request's identity is `event.context.layerbase.auth` (the layer leaves `event.context.auth` to the app): `{ kind: "key", keyId, name, scopes }` or `{ kind: "session", user }`. In a handler, `requireAuth(event)`, `requireSession(event)` and `requireScope(event, scope)` give it or throw.
 
 | Case                                                                          | Status | Message                                                 |
 | ----------------------------------------------------------------------------- | ------ | ------------------------------------------------------- |
@@ -520,6 +563,7 @@ TEST_POSTGRES_URL=postgres://postgres:postgres@localhost:55432/postgres pnpm tes
 The layer never brings a second copy of a package into an app:
 
 - `nuxt`, `vue`, `drizzle-orm` and `awilix` are **peer dependencies** with an explicit range. `drizzle-orm` and `awilix` are required even by an app that does not use the migration helpers or the container, because Nuxt type-checks all files of a layer.
+- `engines.node` is `>=22.22.3`, because Nuxt itself needs that version of Node 22. An app that pins `node: 22` gets the newest 22 release, which is newer.
 - The database drivers (`better-sqlite3`, `pg`) are not dependencies of the layer at all. The app creates the connection and passes it in.
 - The versions the layer is developed and tested with are in `devDependencies`.
 

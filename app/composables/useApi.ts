@@ -1,5 +1,6 @@
 import type { FetchOptions } from "ofetch";
-import { createApiRunner } from "../utils/apiClient";
+import type { WatchSource } from "vue";
+import { createApiRunner, notifyEachFailure } from "../utils/apiClient";
 import type { ApiFetcher, ApiNotification } from "../utils/apiClient";
 
 declare module "#app" {
@@ -24,6 +25,9 @@ type ApiFetchOptions = FetchOptions<"json">;
  *
  * `run` does not throw. On failure it calls the `layerbase:notify` hook and
  * resolves to `{ Success: false, Message, ResponseObject, Status }`.
+ *
+ * For reads with `useFetch`, `watchFetchError(error, title)` sends an error
+ * notification each time the read fails.
  */
 export function useApi() {
 	const nuxtApp = useNuxtApp();
@@ -33,7 +37,22 @@ export function useApi() {
 	// typing also fails here with "excessive stack depth".
 	const fetcher = $fetch as unknown as ApiFetcher<ApiFetchOptions>;
 
-	return createApiRunner<ApiFetchOptions>(fetcher, (notification) => {
+	const runner = createApiRunner<ApiFetchOptions>(fetcher, (notification) => {
 		void nuxtApp.callHook("layerbase:notify", notification);
 	});
+
+	/**
+	 * Sends an error notification each time a `useFetch` read fails:
+	 *
+	 *     const { data, error } = await useFetch("/api/notes");
+	 *     watchFetchError(error, "Could not load the notes");
+	 *
+	 * Call it in `setup`. It notifies in the browser only, so a read that failed
+	 * during server rendering is shown once, after hydration.
+	 */
+	function watchFetchError(error: WatchSource<unknown>, title?: string) {
+		if (import.meta.client) notifyEachFailure(error, (value) => runner.notifyError(value, title));
+	}
+
+	return { ...runner, watchFetchError };
 }

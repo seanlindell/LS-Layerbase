@@ -142,8 +142,22 @@ describe("useContainer and defineResolver", () => {
 	it("resolves from the container of the request when given an event", () => {
 		const scope = buildContainer(setup).createScope();
 		scope.register({ requestId: { resolve: () => "request-7" } });
-		const event = { context: { container: scope } } as unknown as Parameters<typeof useContainer>[0];
+		const event = { context: { layerbase: { container: scope } } } as unknown as Parameters<
+			typeof useContainer
+		>[0];
 
 		expect(resolve(event!, "requestId")).toBe("request-7");
+	});
+
+	it("ignores an `event.context.container` that belongs to the app", () => {
+		const scope = buildContainer(setup).createScope();
+		scope.register({ requestId: { resolve: () => "layer" } });
+		const appContainer = buildContainer(setup).createScope();
+		appContainer.register({ requestId: { resolve: () => "app" } });
+		const event = {
+			context: { container: appContainer, layerbase: { container: scope } },
+		} as unknown as Parameters<typeof useContainer>[0];
+
+		expect(resolve(event!, "requestId")).toBe("layer");
 	});
 });

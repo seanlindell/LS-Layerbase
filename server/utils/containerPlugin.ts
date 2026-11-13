@@ -1,6 +1,7 @@
 import type { AwilixContainer } from "awilix";
 import type { H3Event } from "h3";
 import { buildContainer, setRootContainer } from "./container";
+import { layerbaseEventContext } from "./eventContext";
 import type { ContainerSetup } from "./container";
 
 export interface ContainerPluginOptions<Cradle extends object> {
@@ -37,19 +38,19 @@ export function defineContainerPlugin<Cradle extends object>(
 
 		nitroApp.hooks.hook("request", (event) => {
 			if (!options.scopePerRequest) {
-				event.context.container = container;
+				layerbaseEventContext(event).container = container;
 
 				return;
 			}
 
 			const scope = container.createScope();
-			event.context.container = scope;
+			layerbaseEventContext(event).container = scope;
 			options.onRequestScope?.(scope, event);
 		});
 
 		if (options.scopePerRequest) {
 			nitroApp.hooks.hook("afterResponse", async (event) => {
-				await event.context.container?.dispose();
+				await event.context.layerbase?.container?.dispose();
 			});
 		}
 

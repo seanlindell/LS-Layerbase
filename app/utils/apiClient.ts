@@ -1,4 +1,7 @@
 import type { ActionFailure, ActionSuccess } from "../../shared/utils/actionResult";
+import { ApiError } from "../../shared/utils/apiErrors";
+import { watch } from "vue";
+import type { WatchSource, WatchStopHandle } from "vue";
 
 /**
  * A failed request, in the shape of an `ActionResult`. `useApi().run()` builds it
@@ -91,12 +94,36 @@ export function fetchErrorMessage(error: unknown): string {
 	return toApiFailure(error).Message;
 }
 
+/** How a notification looks. The app maps each kind to its own colour and icon. */
+export type ApiNotificationKind = "error" | "warning" | "info" | "success";
+
 /** A message for the app to show, for example as a toast. */
 export interface ApiNotification {
-	kind: "error" | "success";
+	kind: ApiNotificationKind;
 	title: string;
 	/** More detail. For an error this is the message from the server. */
 	message?: string;
+	/**
+	 * For an error: the HTTP status of the failure, or `null` when a request got
+	 * no response. Absent when the failure has no status, and for the other kinds.
+	 * An app can, for example, send the user to the login page on a 401.
+	 */
+	status?: number | null;
+}
+
+/**
+ * The message to show for something that failed:
+ *
+ * - a string: the string itself, a message the app wrote;
+ * - an `ApiError` (the layer's typed errors also work in the browser): its message;
+ * - anything a request threw: the message from the server, as `toApiFailure` finds it;
+ * - any other error: a fixed message, because its text was not written for a person.
+ */
+export function failureMessage(failure: unknown): string {
+	if (typeof failure === "string") return nonEmptyString(failure) ?? UNKNOWN_ERROR_MESSAGE;
+	if (failure instanceof ApiError) return nonEmptyString(failure.message) ?? UNKNOWN_ERROR_MESSAGE;
+
+	return fetchErrorMessage(failure);
 }
 
 /** Options of `run()` that are not passed on to `$fetch`. */
@@ -123,8 +150,25 @@ export function createApiRunner<Options extends object>(
 	fetcher: ApiFetcher<Options>,
 	notify: (notification: ApiNotification) => void,
 ) {
-	function notifyError(error: unknown, title = DEFAULT_ERROR_TITLE) {
-		notify({ kind: "error", title, message: fetchErrorMessage(error) });
+	/**
+	 * An error notification for anything that failed: a string the app wrote, an
+	 * `ApiError`, or what a request threw. See `failureMessage`.
+	 */
+	function notifyError(failure: unknown, title = DEFAULT_ERROR_TITLE) {
+		const notification: ApiNotification = { kind: "error", title, message: failureMessage(failure) };
+		const status = fetchErrorStatus(failure);
+		if (status !== undefined) notification.status = status;
+		else if (isFetchError(failure)) notification.status = null;
+
+		notify(notification);
+	}
+
+	function notifyWarning(title: string, message?: string) {
+		notify({ kind: "warning", title, message });
+	}
+
+	function notifyInfo(title: string, message?: string) {
+		notify({ kind: "info", title, message });
 	}
 
 	function notifySuccess(title: string, message?: string) {
@@ -163,11 +207,42 @@ export function createApiRunner<Options extends object>(
 		}
 
 		if (!result.Success && !silent) {
-			notify({ kind: "error", title: errorTitle ?? DEFAULT_ERROR_TITLE, message: result.Message });
+			notify({
+				kind: "error",
+				title: errorTitle ?? DEFAULT_ERROR_TITLE,
+				message: result.Message,
+				status: result.Status,
+			});
 		}
 
 		return result;
 	}
 
-	return { run, errorMessage: fetchErrorMessage, errorStatus: fetchErrorStatus, notifyError, notifySuccess };
+	return {
+		run,
+		errorMessage: fetchErrorMessage,
+		errorStatus: fetchErrorStatus,
+		notify,
+		notifyError,
+		notifyWarning,
+		notifyInfo,
+		notifySuccess,
+	};
+}
+
+/**
+ * Calls `onFailure` with the value of `source` now, if it is set, and each time it
+ * changes to a new failure. `useApi().watchFetchError` uses it for `useFetch` errors.
+ */
+export function notifyEachFailure(
+	source: WatchSource<unknown>,
+	onFailure: (failure: unknown) => void,
+): WatchStopHandle {
+	return watch(
+		source,
+		(value) => {
+			if (value) onFailure(value);
+		},
+		{ immediate: true },
+	);
 }
