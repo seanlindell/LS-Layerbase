@@ -37,7 +37,34 @@ describe("mapError: typed errors", () => {
 
 	it("keeps the payload of a conflict", () => {
 		const existing = { id: 7, title: "Same" };
-		expect(mapError(new ConflictError("Already exists.", existing)).payload).toEqual(existing);
+		expect(mapError(new ConflictError("Already exists.", { payload: existing })).payload).toEqual(existing);
+	});
+
+	it("keeps the cause for the log and never sends it to the caller", () => {
+		const cause = new Error(SECRET);
+		const error = new UpstreamError("The mail service failed.", { cause });
+
+		expect(error.cause).toBe(cause);
+		expect(error.payload).toBeUndefined();
+		expect(mapError(error)).toEqual({ status: 502, message: "The mail service failed.", log: true });
+	});
+
+	it("sets no cause when none is given", () => {
+		expect(new NotFoundError("x")).not.toHaveProperty("cause");
+		expect(new NotFoundError("x", { payload: 1 })).not.toHaveProperty("cause");
+	});
+
+	it("carries a payload and a cause together", () => {
+		const cause = new Error("db");
+		const error = new ApiError(418, "No coffee.", { payload: { pot: "tea" }, cause });
+
+		expect(error.cause).toBe(cause);
+		expect(mapError(error)).toEqual({
+			status: 418,
+			message: "No coffee.",
+			payload: { pot: "tea" },
+			log: false,
+		});
 	});
 
 	it("asks for a log line for typed 5xx errors only", () => {

@@ -1,12 +1,16 @@
 import { createFetch } from "ofetch";
 import { describe, expect, it, vi } from "vitest";
+import { nextTick, ref } from "vue";
 import {
 	NETWORK_ERROR_MESSAGE,
 	UNKNOWN_ERROR_MESSAGE,
 	createApiRunner,
+	failureMessage,
 	fetchErrorMessage,
 	fetchErrorStatus,
+	notifyEachFailure,
 } from "~~/app/utils/apiClient";
+import { ForbiddenError } from "~~/shared/utils/apiErrors";
 import type { ApiNotification } from "~~/app/utils/apiClient";
 
 interface Note {
@@ -150,7 +154,9 @@ describe("run", () => {
 
 		await run("/api/notes", { method: "POST", errorTitle: "Could not create the note" });
 
-		expect(notifications).toEqual([{ kind: "error", title: "Could not create the note", message: "No." }]);
+		expect(notifications).toEqual([
+			{ kind: "error", title: "Could not create the note", message: "No.", status: 400 },
+		]);
 	});
 
 	it("sends no notification when silent", async () => {
@@ -215,5 +221,99 @@ describe("errorMessage and errorStatus", () => {
 		expect(fetchErrorMessage(new Error("Cannot read properties of undefined"))).toBe(UNKNOWN_ERROR_MESSAGE);
 		expect(fetchErrorMessage("boom")).toBe(UNKNOWN_ERROR_MESSAGE);
 		expect(fetchErrorMessage(null)).toBe(UNKNOWN_ERROR_MESSAGE);
+	});
+});
+
+describe("notifyError and the other notifications", () => {
+	it("shows a message the app wrote", () => {
+		const { notifyError, notifications } = runnerFor(() => json(200, {}));
+
+		notifyError("The answer stream stopped.", "Could not answer");
+
+		expect(notifications).toEqual([
+			{ kind: "error", title: "Could not answer", message: "The answer stream stopped." },
+		]);
+	});
+
+	it("shows the message and status of an ApiError thrown in the browser", () => {
+		const { notifyError, notifications } = runnerFor(() => json(200, {}));
+
+		notifyError(new ForbiddenError("Only the owner can do that."));
+
+		expect(notifications).toEqual([
+			{ kind: "error", title: "Something went wrong", message: "Only the owner can do that.", status: 403 },
+		]);
+	});
+
+	it("gives the status of a failed request, and null when no response arrived", async () => {
+		const unauthorized = await createFetch({
+			fetch: async () => json(401, { statusCode: 401, message: "Sign in." }),
+		})("/api/me").catch((thrown: unknown) => thrown);
+		const offline = await createFetch({
+			fetch: async () => {
+				throw new TypeError("fetch failed");
+			},
+		})("/api/me", { retry: 0 }).catch((thrown: unknown) => thrown);
+		const { notifyError, notifications } = runnerFor(() => json(200, {}));
+
+		notifyError(unauthorized);
+		notifyError(offline);
+
+		expect(notifications.map(({ message, status }) => ({ message, status }))).toEqual([
+			{ message: "Sign in.", status: 401 },
+			{ message: NETWORK_ERROR_MESSAGE, status: null },
+		]);
+	});
+
+	it("still hides the text of any other error, and gives it no status", () => {
+		const { notifyError, notifications } = runnerFor(() => json(200, {}));
+
+		notifyError(new Error("Cannot read properties of undefined"));
+
+		expect(notifications).toEqual([
+			{ kind: "error", title: "Something went wrong", message: UNKNOWN_ERROR_MESSAGE },
+		]);
+	});
+
+	it("sends warning, info and success notifications, and any notification as it is", () => {
+		const { notify, notifyWarning, notifyInfo, notifySuccess, notifications } = runnerFor(() =>
+			json(200, {}),
+		);
+
+		notifyWarning("Channel added", "Its videos could not be loaded yet.");
+		notifyInfo("Sync started");
+		notifySuccess("Saved");
+		notify({ kind: "error", title: "Custom", message: "Own message.", status: 409 });
+
+		expect(notifications).toEqual([
+			{ kind: "warning", title: "Channel added", message: "Its videos could not be loaded yet." },
+			{ kind: "info", title: "Sync started", message: undefined },
+			{ kind: "success", title: "Saved", message: undefined },
+			{ kind: "error", title: "Custom", message: "Own message.", status: 409 },
+		]);
+	});
+});
+
+describe("failureMessage", () => {
+	it("uses the fixed message for an empty string", () => {
+		expect(failureMessage("  ")).toBe(UNKNOWN_ERROR_MESSAGE);
+	});
+});
+
+describe("notifyEachFailure", () => {
+	it("reports a failure that is there already, then each new one, and not a recovery", async () => {
+		const error = ref<unknown>("first");
+		const seen: unknown[] = [];
+		const stop = notifyEachFailure(error, (failure) => seen.push(failure));
+
+		error.value = null;
+		await nextTick();
+		error.value = "second";
+		await nextTick();
+		stop();
+		error.value = "after stop";
+		await nextTick();
+
+		expect(seen).toEqual(["first", "second"]);
 	});
 });

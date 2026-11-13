@@ -149,10 +149,10 @@ A handler can ask for more with `requireAuth(event)`, `requireScope(event, scope
    - Authenticate it. Any failure is 401 with one message.
    - Call the rate-limit hook, if there is one. A refusal is 429 with `Retry-After`.
    - Apply the rule. A missing scope, or a route without a scope rule, is 403.
-   - Set `event.context.auth = { kind: "key", keyId, name, scopes }`.
+   - Set `event.context.layerbase.auth = { kind: "key", keyId, name, scopes }`.
 3. **If no key is presented**, the only credential can be a cookie, which a browser sends by itself:
    - **Origin check (CSRF).** For a method other than `GET`, `HEAD` and `OPTIONS`, the `Origin` header must be present and its host must be the request's host (or one of `allowedOrigins`). Otherwise 403. This runs before the public rules, so it covers the login route too. `Origin: null` is refused.
-   - Ask the app's `session` function. With a user, set `event.context.auth = { kind: "session", user }`.
+   - Ask the app's `session` function. With a user, set `event.context.layerbase.auth = { kind: "session", user }`.
    - Without a user, a public rule lets the request continue with no identity. Any other rule is 401.
 
 A request with a key needs no `Origin` check: a browser does not add an `Authorization` header by itself, so another site cannot make the request.

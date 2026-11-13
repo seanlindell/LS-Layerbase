@@ -2,14 +2,8 @@ import type { H3Event } from "h3";
 import type { ApiKeyIdentity } from "./apiKeyService";
 import { AUTH_MESSAGES, authorizeRequest, normalizeAuthPath } from "./authRules";
 import type { ApiKeyAuthenticator, AuthIdentity, AuthRule, RateLimitDecision } from "./authRules";
+import { layerbaseEventContext } from "./eventContext";
 import { httpError } from "./handlers";
-
-declare module "h3" {
-	interface H3EventContext {
-		/** Who is making the request. Not set on public routes without a credential. */
-		auth?: AuthIdentity;
-	}
-}
 
 export interface AuthMiddlewareOptions<User = unknown> {
 	/**
@@ -70,13 +64,13 @@ export function defineAuthMiddleware<User = unknown>(options: AuthMiddlewareOpti
 			throw httpError(decision.status, decision.message);
 		}
 
-		if (decision.auth) event.context.auth = decision.auth;
+		if (decision.auth) layerbaseEventContext(event).auth = decision.auth;
 	});
 }
 
 /** The identity of the request, or a 401. For a handler on a route that the rules leave public. */
 export function requireAuth(event: H3Event): AuthIdentity {
-	const auth = event.context.auth;
+	const auth = event.context.layerbase?.auth;
 	if (!auth) throw httpError(401, AUTH_MESSAGES.unauthorized);
 
 	return auth;
