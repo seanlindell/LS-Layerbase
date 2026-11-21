@@ -15,6 +15,19 @@ export interface ApiFailure extends ActionFailure {
 /** What `useApi().run()` resolves to. It does not throw. */
 export type ApiResult<T = null> = ActionSuccess<T> | ApiFailure;
 
+/** A read that worked: the body of the response, as the route sent it. */
+export interface ApiReadSuccess<T> {
+	Success: true;
+	/** The body of the response, typed as the caller says. */
+	ResponseObject: T;
+}
+
+/**
+ * What `useApi().read()` resolves to. It does not throw. A failure is the same
+ * `ApiFailure` as from `run`, so a page handles both in one way.
+ */
+export type ApiReadResult<T> = ApiReadSuccess<T> | ApiFailure;
+
 /** Shown when no response arrived at all. */
 export const NETWORK_ERROR_MESSAGE = "The server could not be reached. Check the connection and try again.";
 /** Shown when something other than the request failed, for example code in the caller. */
@@ -22,6 +35,10 @@ export const UNKNOWN_ERROR_MESSAGE = "Something went wrong. Try again.";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
+}
+
+function isFailure(result: { Success: boolean }): result is ApiFailure {
+	return !result.Success;
 }
 
 function nonEmptyString(value: unknown): string | undefined {
@@ -176,37 +193,28 @@ export function createApiRunner<Options extends object>(
 	}
 
 	/**
-	 * Sends a request to a route that answers with an `ActionResult`, and never
-	 * throws. On failure it sends an error notification (unless `silent`) and
-	 * resolves to an `ApiFailure`.
+	 * Sends a request and turns its outcome into a result: `interpret` reads a
+	 * body that arrived, and anything thrown becomes an `ApiFailure`. Sets
+	 * `pending`, and sends an error notification on failure unless `silent`.
 	 */
-	async function run<T = null>(request: string, options?: Options & ApiRunOwnOptions): Promise<ApiResult<T>> {
+	async function request<R extends { Success: boolean }>(
+		url: string,
+		options: (Options & ApiRunOwnOptions) | undefined,
+		interpret: (body: unknown) => R | ApiFailure,
+	): Promise<R | ApiFailure> {
 		const { pending, errorTitle, silent, ...fetchOptions } = options ?? ({} as Options & ApiRunOwnOptions);
 
-		let result: ApiResult<T>;
+		let result: R | ApiFailure;
 		if (pending) pending.value = true;
 		try {
-			const body = await fetcher(request, fetchOptions as Options);
-			if (isRecord(body) && body.Success === true) {
-				result = body as unknown as ActionSuccess<T>;
-			} else if (isRecord(body) && body.Success === false) {
-				// A server that still answers 200 with `Success: false`.
-				result = toApiFailure({ data: body, status: 200 });
-			} else {
-				result = {
-					Success: false,
-					Message: "The server sent an answer that could not be read.",
-					ResponseObject: null,
-					Status: null,
-				};
-			}
+			result = interpret(await fetcher(url, fetchOptions as Options));
 		} catch (error) {
 			result = toApiFailure(error);
 		} finally {
 			if (pending) pending.value = false;
 		}
 
-		if (!result.Success && !silent) {
+		if (isFailure(result) && !silent) {
 			notify({
 				kind: "error",
 				title: errorTitle ?? DEFAULT_ERROR_TITLE,
@@ -218,8 +226,39 @@ export function createApiRunner<Options extends object>(
 		return result;
 	}
 
+	/**
+	 * Sends a request to a route that answers with an `ActionResult`, and never
+	 * throws. On failure it sends an error notification (unless `silent`) and
+	 * resolves to an `ApiFailure`.
+	 */
+	function run<T = null>(url: string, options?: Options & ApiRunOwnOptions): Promise<ApiResult<T>> {
+		return request<ActionSuccess<T>>(url, options, (body) => {
+			if (isRecord(body) && body.Success === true) return body as unknown as ActionSuccess<T>;
+			// A server that still answers 200 with `Success: false`.
+			if (isRecord(body) && body.Success === false) return toApiFailure({ data: body, status: 200 });
+
+			return {
+				Success: false,
+				Message: "The server sent an answer that could not be read.",
+				ResponseObject: null,
+				Status: null,
+			};
+		});
+	}
+
+	/**
+	 * Sends a request to a route that answers with a view (`defineApiHandler`)
+	 * rather than an `ActionResult`, and never throws. On success it resolves to
+	 * `{ Success: true, ResponseObject }` with the body as it came. On failure it
+	 * behaves like `run`: an error notification (unless `silent`) and an `ApiFailure`.
+	 */
+	function read<T>(url: string, options?: Options & ApiRunOwnOptions): Promise<ApiReadResult<T>> {
+		return request<ApiReadSuccess<T>>(url, options, (body) => ({ Success: true, ResponseObject: body as T }));
+	}
+
 	return {
 		run,
+		read,
 		errorMessage: fetchErrorMessage,
 		errorStatus: fetchErrorStatus,
 		notify,

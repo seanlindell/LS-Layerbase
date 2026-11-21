@@ -17,5 +17,6 @@ describe("playground with the layer applied", async () => {
 	it("renders the notes page, which uses `useApi`", async () => {
 		const html = await $fetch<string>("/notes");
 		expect(html).toContain('data-testid="note-form"');
+		expect(html).toContain('data-testid="lookup-form"');
 	});
 });

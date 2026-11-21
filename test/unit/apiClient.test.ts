@@ -194,6 +194,92 @@ describe("run", () => {
 	});
 });
 
+describe("read", () => {
+	it("returns the body of a view, typed, without a notification", async () => {
+		const note: Note = { id: 1, title: "First" };
+		const { read, notifications } = runnerFor(() => json(200, note));
+
+		const result = await read<Note>("/api/notes/1");
+
+		expect(result).toEqual({ Success: true, ResponseObject: note });
+		if (result.Success) expect(result.ResponseObject.title).toBe("First");
+		expect(notifications).toEqual([]);
+	});
+
+	it("returns a body that is not a record as it came", async () => {
+		const { read } = runnerFor(() => json(200, [1, 2]));
+
+		expect(await read<number[]>("/api/ids")).toEqual({ Success: true, ResponseObject: [1, 2] });
+	});
+
+	it("does not take a body with a `Success` field for an ActionResult", async () => {
+		const { read, notifications } = runnerFor(() => json(200, { Success: false, Message: "A field." }));
+
+		expect(await read("/api/view")).toEqual({
+			Success: true,
+			ResponseObject: { Success: false, Message: "A field." },
+		});
+		expect(notifications).toEqual([]);
+	});
+
+	it("reads an h3 error into the same failure and notification as run", async () => {
+		const { read, notifications } = runnerFor(() =>
+			json(404, { statusCode: 404, message: "No such note.", data: { id: 9 } }),
+		);
+
+		const result = await read<Note>("/api/notes/9", { errorTitle: "Could not load the note" });
+
+		expect(result).toEqual({
+			Success: false,
+			Message: "No such note.",
+			ResponseObject: { id: 9 },
+			Status: 404,
+		});
+		expect(notifications).toEqual([
+			{ kind: "error", title: "Could not load the note", message: "No such note.", status: 404 },
+		]);
+	});
+
+	it("returns a fixed message for a network failure", async () => {
+		const { read, notifications } = runnerFor(() => {
+			throw new TypeError("fetch failed");
+		});
+
+		expect(await read("/api/notes/1", { retry: 0 })).toEqual({
+			Success: false,
+			Message: NETWORK_ERROR_MESSAGE,
+			ResponseObject: null,
+			Status: null,
+		});
+		expect(notifications).toEqual([
+			{ kind: "error", title: "Something went wrong", message: NETWORK_ERROR_MESSAGE, status: null },
+		]);
+	});
+
+	it("sends no notification when silent", async () => {
+		const { read, notifications } = runnerFor(() => json(500, { statusCode: 500, message: "Broken." }));
+
+		expect((await read("/api/notes/1", { silent: true })).Success).toBe(false);
+		expect(notifications).toEqual([]);
+	});
+
+	it("does not pass its own options on, and clears the pending flag after a failure", async () => {
+		const pending = { value: false };
+		const seen: boolean[] = [];
+		const fetcher = vi.fn(async () => {
+			seen.push(pending.value);
+			throw new Error("boom");
+		});
+		const { read } = createApiRunner<{ method?: string }>(fetcher, () => undefined);
+
+		await read("/api/notes/1", { method: "GET", pending, errorTitle: "x", silent: true });
+
+		expect(fetcher).toHaveBeenCalledWith("/api/notes/1", { method: "GET" });
+		expect(seen).toEqual([true]);
+		expect(pending.value).toBe(false);
+	});
+});
+
 describe("errorMessage and errorStatus", () => {
 	it("reads a thrown fetch error", async () => {
 		const $fetch = createFetch({

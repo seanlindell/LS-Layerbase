@@ -3,7 +3,7 @@ import type { Note } from "../../server/repositories/NoteRepository";
 
 // Try these titles: a new one (200), an empty one (400), "First note" (409, with
 // the existing note as the payload), "upstream" (502) and "bug" (500).
-const { run, notifySuccess, watchFetchError } = useApi();
+const { run, read, notifySuccess, watchFetchError } = useApi();
 
 // The note routes need a signed-in person or an API key. This "sign in" only sets
 // a cookie with a name; see server/utils/session.ts.
@@ -42,6 +42,21 @@ async function addNote() {
 		existing.value = result.ResponseObject;
 	}
 }
+
+// A read route answers with the note itself, not an ActionResult, so it uses `read`.
+// Try an id that exists, one that does not (404), "abc" (400) and "bug" (500).
+const lookupId = ref("");
+const isLooking = ref(false);
+const found = ref<Note | null>(null);
+
+async function lookUp() {
+	found.value = null;
+	const result = await read<Note>(`/api/notes/${encodeURIComponent(lookupId.value)}`, {
+		pending: isLooking,
+		errorTitle: "Could not load the note",
+	});
+	if (result.Success) found.value = result.ResponseObject;
+}
 </script>
 
 <template>
@@ -62,5 +77,13 @@ async function addNote() {
 		<ul data-testid="created">
 			<li v-for="note in created" :key="note.id">#{{ note.id }} {{ note.title }}</li>
 		</ul>
+		<form data-testid="lookup-form" @submit.prevent="lookUp">
+			<label>
+				Note id
+				<input v-model="lookupId" name="id" />
+			</label>
+			<button type="submit" :disabled="isLooking">Look up</button>
+		</form>
+		<p v-if="found" data-testid="found">#{{ found.id }} "{{ found.title }}"</p>
 	</section>
 </template>

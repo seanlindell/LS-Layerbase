@@ -213,7 +213,26 @@ On failure `run` resolves to `{ Success: false, Message, ResponseObject, Status 
 | An error without a usable body                                  | `The request failed with status 502.`                                  | `null`                                        | the HTTP status |
 | Nothing (the network is down)                                   | `The server could not be reached. Check the connection and try again.` | `null`                                        | `null`          |
 
-The other options of `run` are the options of `$fetch`. `useApi()` also returns:
+The other options of `run` are the options of `$fetch`.
+
+### Reads with `read`
+
+A read route (`defineApiHandler`) answers with the view itself, not an `ActionResult`, so `run` cannot read it. Use `read`, which takes the same options and never throws:
+
+```ts
+const { read } = useApi();
+
+const result = await read<Note>(`/api/notes/${id}`, { errorTitle: "Could not load the note" });
+if (result.Success) note.value = result.ResponseObject; // the body, typed as Note
+```
+
+On success it resolves to `{ Success: true, ResponseObject }`, with the body as the route sent it. On failure it resolves to the same `{ Success: false, Message, ResponseObject, Status }` as `run`, from the table above, and sends the same error notification (unless `silent`). `pending` works as for `run`.
+
+Use `read` for a read in an event handler, for example a lookup after a click. For data a page needs when it loads, `useFetch` with `watchFetchError` (below) still fits better, because it also runs during server rendering.
+
+### Other helpers
+
+`useApi()` also returns:
 
 - `errorMessage(error)` and `errorStatus(error)`: the message and the status for anything that a request threw, for code that calls `$fetch` or `useFetch` directly.
 - `watchFetchError(error, title?)`: sends an error notification each time a `useFetch` read fails. Call it in `setup`:
