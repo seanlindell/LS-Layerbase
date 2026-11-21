@@ -10,6 +10,10 @@ How to read a version `X.Y.Z`:
 
 ## [Unreleased]
 
+### Added
+
+- **`read<T>(url, options)`** in `useApi()`: the counterpart of `run` for a route that answers with a view (`defineApiHandler`) rather than an `ActionResult`. It resolves to `{ Success: true, ResponseObject }` with the body, and on failure to the same `ApiFailure`, notification, `pending`, `silent` and `errorTitle` as `run`. Before, `run` on such a route failed with "The server sent an answer that could not be read." (#22)
+
 ## [0.2.0] - 2026-11-12
 
 Changes asked for by the first five apps that moved to the layer.

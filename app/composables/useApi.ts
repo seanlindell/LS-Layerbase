@@ -26,6 +26,13 @@ type ApiFetchOptions = FetchOptions<"json">;
  * `run` does not throw. On failure it calls the `layerbase:notify` hook and
  * resolves to `{ Success: false, Message, ResponseObject, Status }`.
  *
+ * For a route that answers with a view rather than an `ActionResult`
+ * (`defineApiHandler`), `read` resolves to `{ Success: true, ResponseObject }`
+ * with the body, and fails in the same way as `run`:
+ *
+ *     const result = await read<Note>(`/api/notes/${id}`);
+ *     if (result.Success) note.value = result.ResponseObject;
+ *
  * For reads with `useFetch`, `watchFetchError(error, title)` sends an error
  * notification each time the read fails.
  */
