@@ -14,6 +14,16 @@ How to read a version `X.Y.Z`:
 
 - **`read<T>(url, options)`** in `useApi()`: the counterpart of `run` for a route that answers with a view (`defineApiHandler`) rather than an `ActionResult`. It resolves to `{ Success: true, ResponseObject }` with the body, and on failure to the same `ApiFailure`, notification, `pending`, `silent` and `errorTitle` as `run`. Before, `run` on such a route failed with "The server sent an answer that could not be read." (#22)
 
+### Changed
+
+- **The layer needs Nuxt 4.7.0 or later:** the `nuxt` peer range is now `^4.7.0` (was `^4.0.0`), and the `vue` peer range is `^3.5.46` (was `^3.5.0`), the version Nuxt 4.7 needs. Nuxt 4.7.0 fixes three security issues: [GHSA-jxc9-w3j6-pwp2](https://github.com/nuxt/nuxt/security/advisories/GHSA-jxc9-w3j6-pwp2) (route rules on `_payload.json` could serve one user's page data to another), [GHSA-vrh2-cfcx-c3fg](https://github.com/nuxt/nuxt/security/advisories/GHSA-vrh2-cfcx-c3fg) (encoded slashes on catch-all routes) and [GHSA-h5xj-x893-p5f7](https://github.com/nuxt/nuxt/security/advisories/GHSA-h5xj-x893-p5f7) (dev server runtime config).
+
+### Migration
+
+1. Upgrade the app to Nuxt 4.7.0 or later, with `vue` 3.5.46 or later: `npx nuxt upgrade --dedupe`.
+2. Nuxt 4.7 no longer installs Nuxt DevTools. An app that uses it adds `@nuxt/devtools` to its `devDependencies`.
+3. An app with `cache`, `swr` or `isr` route rules on pages with user-specific data purges any CDN or edge cache that may hold a `_payload.json`.
+
 ## [0.2.0] - 2026-11-12
 
 Changes asked for by the first five apps that moved to the layer.
